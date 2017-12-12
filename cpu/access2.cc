@@ -37,10 +37,10 @@ BX_CPU_C::write_linear_byte(unsigned s, bx_address laddr, Bit8u data)
       bx_hostpageaddr_t hostPageAddr = tlbEntry->hostPageAddr;
       Bit32u pageOffset = PAGE_OFFSET(laddr);
       bx_phy_address pAddr = tlbEntry->ppf | pageOffset;
-      BX_NOTIFY_LIN_MEMORY_ACCESS(laddr, pAddr, 1, tlbEntry->get_memtype(), BX_WRITE, (Bit8u*) &data);
       Bit8u *hostAddr = (Bit8u*) (hostPageAddr | pageOffset);
       pageWriteStampTable.decWriteStamp(pAddr, 1);
       *hostAddr = data;
+      BX_NOTIFY_LIN_MEMORY_ACCESS(laddr, pAddr, 1, tlbEntry->get_memtype(), BX_WRITE, (Bit8u*) &data);
       return;
     }
   }
@@ -64,10 +64,10 @@ BX_CPU_C::write_linear_word(unsigned s, bx_address laddr, Bit16u data)
       bx_hostpageaddr_t hostPageAddr = tlbEntry->hostPageAddr;
       Bit32u pageOffset = PAGE_OFFSET(laddr);
       bx_phy_address pAddr = tlbEntry->ppf | pageOffset;
-      BX_NOTIFY_LIN_MEMORY_ACCESS(laddr, pAddr, 2, tlbEntry->get_memtype(), BX_WRITE, (Bit8u*) &data);
       Bit16u *hostAddr = (Bit16u*) (hostPageAddr | pageOffset);
       pageWriteStampTable.decWriteStamp(pAddr, 2);
       WriteHostWordToLittleEndian(hostAddr, data);
+      BX_NOTIFY_LIN_MEMORY_ACCESS(laddr, pAddr, 2, tlbEntry->get_memtype(), BX_WRITE, (Bit8u*) &data);
       return;
     }
   }
@@ -91,10 +91,10 @@ BX_CPU_C::write_linear_dword(unsigned s, bx_address laddr, Bit32u data)
       bx_hostpageaddr_t hostPageAddr = tlbEntry->hostPageAddr;
       Bit32u pageOffset = PAGE_OFFSET(laddr);
       bx_phy_address pAddr = tlbEntry->ppf | pageOffset;
-      BX_NOTIFY_LIN_MEMORY_ACCESS(laddr, pAddr, 4, tlbEntry->get_memtype(), BX_WRITE, (Bit8u*) &data);
       Bit32u *hostAddr = (Bit32u*) (hostPageAddr | pageOffset);
       pageWriteStampTable.decWriteStamp(pAddr, 4);
       WriteHostDWordToLittleEndian(hostAddr, data);
+      BX_NOTIFY_LIN_MEMORY_ACCESS(laddr, pAddr, 4, tlbEntry->get_memtype(), BX_WRITE, (Bit8u*) &data);
       return;
     }
   }
@@ -118,10 +118,10 @@ BX_CPU_C::write_linear_qword(unsigned s, bx_address laddr, Bit64u data)
       bx_hostpageaddr_t hostPageAddr = tlbEntry->hostPageAddr;
       Bit32u pageOffset = PAGE_OFFSET(laddr);
       bx_phy_address pAddr = tlbEntry->ppf | pageOffset;
-      BX_NOTIFY_LIN_MEMORY_ACCESS(laddr, pAddr, 8, tlbEntry->get_memtype(), BX_WRITE, (Bit8u*) &data);
       Bit64u *hostAddr = (Bit64u*) (hostPageAddr | pageOffset);
       pageWriteStampTable.decWriteStamp(pAddr, 8);
       WriteHostQWordToLittleEndian(hostAddr, data);
+      BX_NOTIFY_LIN_MEMORY_ACCESS(laddr, pAddr, 8, tlbEntry->get_memtype(), BX_WRITE, (Bit8u*) &data);
       return;
     }
   }
@@ -143,11 +143,11 @@ BX_CPU_C::write_linear_xmmword(unsigned s, bx_address laddr, const BxPackedXmmRe
       bx_hostpageaddr_t hostPageAddr = tlbEntry->hostPageAddr;
       Bit32u pageOffset = PAGE_OFFSET(laddr);
       bx_phy_address pAddr = tlbEntry->ppf | pageOffset;
-      BX_NOTIFY_LIN_MEMORY_ACCESS(laddr, pAddr, 16, tlbEntry->get_memtype(), BX_WRITE, (Bit8u*) data);
       Bit64u *hostAddr = (Bit64u*) (hostPageAddr | pageOffset);
       pageWriteStampTable.decWriteStamp(pAddr, 16);
       WriteHostQWordToLittleEndian(hostAddr,   data->xmm64u(0));
       WriteHostQWordToLittleEndian(hostAddr+1, data->xmm64u(1));
+      BX_NOTIFY_LIN_MEMORY_ACCESS(laddr, pAddr, 16, tlbEntry->get_memtype(), BX_WRITE, (Bit8u*) data);
       return;
     }
   }
@@ -167,11 +167,11 @@ BX_CPU_C::write_linear_xmmword_aligned(unsigned s, bx_address laddr, const BxPac
       bx_hostpageaddr_t hostPageAddr = tlbEntry->hostPageAddr;
       Bit32u pageOffset = PAGE_OFFSET(laddr);
       bx_phy_address pAddr = tlbEntry->ppf | pageOffset;
-      BX_NOTIFY_LIN_MEMORY_ACCESS(laddr, pAddr, 16, tlbEntry->get_memtype(), BX_WRITE, (Bit8u*) data);
       Bit64u *hostAddr = (Bit64u*) (hostPageAddr | pageOffset);
       pageWriteStampTable.decWriteStamp(pAddr, 16);
       WriteHostQWordToLittleEndian(hostAddr,   data->xmm64u(0));
       WriteHostQWordToLittleEndian(hostAddr+1, data->xmm64u(1));
+      BX_NOTIFY_LIN_MEMORY_ACCESS(laddr, pAddr, 16, tlbEntry->get_memtype(), BX_WRITE, (Bit8u*) data);
       return;
     }
   }
@@ -196,12 +196,12 @@ BX_CPU_C::write_linear_ymmword(unsigned s, bx_address laddr, const BxPackedYmmRe
       bx_hostpageaddr_t hostPageAddr = tlbEntry->hostPageAddr;
       Bit32u pageOffset = PAGE_OFFSET(laddr);
       bx_phy_address pAddr = tlbEntry->ppf | pageOffset;
-      BX_NOTIFY_LIN_MEMORY_ACCESS(laddr, pAddr, 32, tlbEntry->get_memtype(), BX_WRITE, (Bit8u*) data);
       Bit64u *hostAddr = (Bit64u*) (hostPageAddr | pageOffset);
       pageWriteStampTable.decWriteStamp(pAddr, 32);
       for (unsigned n = 0; n < 4; n++) {
         WriteHostQWordToLittleEndian(hostAddr+n, data->ymm64u(n));
       }
+      BX_NOTIFY_LIN_MEMORY_ACCESS(laddr, pAddr, 32, tlbEntry->get_memtype(), BX_WRITE, (Bit8u*) data);
       return;
     }
   }
@@ -221,12 +221,12 @@ BX_CPU_C::write_linear_ymmword_aligned(unsigned s, bx_address laddr, const BxPac
       bx_hostpageaddr_t hostPageAddr = tlbEntry->hostPageAddr;
       Bit32u pageOffset = PAGE_OFFSET(laddr);
       bx_phy_address pAddr = tlbEntry->ppf | pageOffset;
-      BX_NOTIFY_LIN_MEMORY_ACCESS(laddr, pAddr, 32, tlbEntry->get_memtype(), BX_WRITE, (Bit8u*) data);
       Bit64u *hostAddr = (Bit64u*) (hostPageAddr | pageOffset);
       pageWriteStampTable.decWriteStamp(pAddr, 32);
       for (unsigned n = 0; n < 4; n++) {
         WriteHostQWordToLittleEndian(hostAddr+n, data->ymm64u(n));
       }
+      BX_NOTIFY_LIN_MEMORY_ACCESS(laddr, pAddr, 32, tlbEntry->get_memtype(), BX_WRITE, (Bit8u*) data);
       return;
     }
   }
@@ -251,12 +251,12 @@ BX_CPU_C::write_linear_zmmword(unsigned s, bx_address laddr, const BxPackedZmmRe
       bx_hostpageaddr_t hostPageAddr = tlbEntry->hostPageAddr;
       Bit32u pageOffset = PAGE_OFFSET(laddr);
       bx_phy_address pAddr = tlbEntry->ppf | pageOffset;
-      BX_NOTIFY_LIN_MEMORY_ACCESS(laddr, pAddr, 64, tlbEntry->get_memtype(), BX_WRITE, (Bit8u*) data);
       Bit64u *hostAddr = (Bit64u*) (hostPageAddr | pageOffset);
       pageWriteStampTable.decWriteStamp(pAddr, 64);
       for (unsigned n = 0; n < 8; n++) {
         WriteHostQWordToLittleEndian(hostAddr+n, data->zmm64u(n));
       }
+      BX_NOTIFY_LIN_MEMORY_ACCESS(laddr, pAddr, 64, tlbEntry->get_memtype(), BX_WRITE, (Bit8u*) data);
       return;
     }
   }
@@ -276,12 +276,12 @@ BX_CPU_C::write_linear_zmmword_aligned(unsigned s, bx_address laddr, const BxPac
       bx_hostpageaddr_t hostPageAddr = tlbEntry->hostPageAddr;
       Bit32u pageOffset = PAGE_OFFSET(laddr);
       bx_phy_address pAddr = tlbEntry->ppf | pageOffset;
-      BX_NOTIFY_LIN_MEMORY_ACCESS(laddr, pAddr, 64, tlbEntry->get_memtype(), BX_WRITE, (Bit8u*) data);
       Bit64u *hostAddr = (Bit64u*) (hostPageAddr | pageOffset);
       pageWriteStampTable.decWriteStamp(pAddr, 64);
       for (unsigned n = 0; n < 8; n++) {
         WriteHostQWordToLittleEndian(hostAddr+n, data->zmm64u(n));
       }
+      BX_NOTIFY_LIN_MEMORY_ACCESS(laddr, pAddr, 64, tlbEntry->get_memtype(), BX_WRITE, (Bit8u*) data);
       return;
     }
   }
@@ -969,10 +969,10 @@ void BX_CPU_C::write_new_stack_word(bx_address laddr, unsigned curr_pl, Bit16u d
       bx_hostpageaddr_t hostPageAddr = tlbEntry->hostPageAddr;
       Bit32u pageOffset = PAGE_OFFSET(laddr);
       bx_phy_address pAddr = tlbEntry->ppf | pageOffset;
-      BX_NOTIFY_LIN_MEMORY_ACCESS(laddr, pAddr, 2, tlbEntry->get_memtype(), BX_WRITE, (Bit8u*) &data);
       Bit16u *hostAddr = (Bit16u*) (hostPageAddr | pageOffset);
       pageWriteStampTable.decWriteStamp(pAddr, 2);
       WriteHostWordToLittleEndian(hostAddr, data);
+      BX_NOTIFY_LIN_MEMORY_ACCESS(laddr, pAddr, 2, tlbEntry->get_memtype(), BX_WRITE, (Bit8u*) &data);
       return;
     }
   }
@@ -996,10 +996,10 @@ void BX_CPU_C::write_new_stack_dword(bx_address laddr, unsigned curr_pl, Bit32u 
       bx_hostpageaddr_t hostPageAddr = tlbEntry->hostPageAddr;
       Bit32u pageOffset = PAGE_OFFSET(laddr);
       bx_phy_address pAddr = tlbEntry->ppf | pageOffset;
-      BX_NOTIFY_LIN_MEMORY_ACCESS(laddr, pAddr, 4, tlbEntry->get_memtype(), BX_WRITE, (Bit8u*) &data);
       Bit32u *hostAddr = (Bit32u*) (hostPageAddr | pageOffset);
       pageWriteStampTable.decWriteStamp(pAddr, 4);
       WriteHostDWordToLittleEndian(hostAddr, data);
+      BX_NOTIFY_LIN_MEMORY_ACCESS(laddr, pAddr, 4, tlbEntry->get_memtype(), BX_WRITE, (Bit8u*) &data);
       return;
     }
   }
@@ -1023,10 +1023,10 @@ void BX_CPU_C::write_new_stack_qword(bx_address laddr, unsigned curr_pl, Bit64u 
       bx_hostpageaddr_t hostPageAddr = tlbEntry->hostPageAddr;
       Bit32u pageOffset = PAGE_OFFSET(laddr);
       bx_phy_address pAddr = tlbEntry->ppf | pageOffset;
-      BX_NOTIFY_LIN_MEMORY_ACCESS(laddr, pAddr, 8, tlbEntry->get_memtype(), BX_WRITE, (Bit8u*) &data);
       Bit64u *hostAddr = (Bit64u*) (hostPageAddr | pageOffset);
       pageWriteStampTable.decWriteStamp(pAddr, 8);
       WriteHostQWordToLittleEndian(hostAddr, data);
+      BX_NOTIFY_LIN_MEMORY_ACCESS(laddr, pAddr, 8, tlbEntry->get_memtype(), BX_WRITE, (Bit8u*) &data);
       return;
     }
   }

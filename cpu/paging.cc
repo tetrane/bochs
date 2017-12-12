@@ -2421,10 +2421,10 @@ int BX_CPU_C::access_write_linear(bx_address laddr, unsigned len, unsigned curr_
     BX_CPU_THIS_PTR address_xlation.memtype1  = tlbEntry->get_memtype();
 #endif
 
+    access_write_physical(BX_CPU_THIS_PTR address_xlation.paddress1, len, data);
+
     BX_NOTIFY_LIN_MEMORY_ACCESS(laddr, BX_CPU_THIS_PTR address_xlation.paddress1,
                           len, tlbEntry->get_memtype(), xlate_rw, (Bit8u*) data);
-
-    access_write_physical(BX_CPU_THIS_PTR address_xlation.paddress1, len, data);
 
 #if BX_X86_DEBUGGER
     hwbreakpoint_match(laddr, len, xlate_rw);
@@ -2456,29 +2456,29 @@ int BX_CPU_C::access_write_linear(bx_address laddr, unsigned len, unsigned curr_
 #endif
 
 #ifdef BX_LITTLE_ENDIAN
+    access_write_physical(BX_CPU_THIS_PTR address_xlation.paddress1,
+        BX_CPU_THIS_PTR address_xlation.len1, data);
     BX_NOTIFY_LIN_MEMORY_ACCESS(laddr, BX_CPU_THIS_PTR address_xlation.paddress1,
         BX_CPU_THIS_PTR address_xlation.len1, tlbEntry->get_memtype(),
         xlate_rw, (Bit8u*) data);
-    access_write_physical(BX_CPU_THIS_PTR address_xlation.paddress1,
-        BX_CPU_THIS_PTR address_xlation.len1, data);
-    BX_NOTIFY_LIN_MEMORY_ACCESS(laddr2, BX_CPU_THIS_PTR address_xlation.paddress2,
-        BX_CPU_THIS_PTR address_xlation.len2, tlbEntry2->get_memtype(),
-        xlate_rw, ((Bit8u*)data) + BX_CPU_THIS_PTR address_xlation.len1);
     access_write_physical(BX_CPU_THIS_PTR address_xlation.paddress2,
         BX_CPU_THIS_PTR address_xlation.len2,
         ((Bit8u*)data) + BX_CPU_THIS_PTR address_xlation.len1);
+    BX_NOTIFY_LIN_MEMORY_ACCESS(laddr2, BX_CPU_THIS_PTR address_xlation.paddress2,
+        BX_CPU_THIS_PTR address_xlation.len2, tlbEntry2->get_memtype(),
+        xlate_rw, ((Bit8u*)data) + BX_CPU_THIS_PTR address_xlation.len1);
 #else // BX_BIG_ENDIAN
-    BX_NOTIFY_LIN_MEMORY_ACCESS(laddr, BX_CPU_THIS_PTR address_xlation.paddress1,
-        BX_CPU_THIS_PTR address_xlation.len1, tlbEntry->get_memtype(),
-        xlate_rw, ((Bit8u*)data) + (len - BX_CPU_THIS_PTR address_xlation.len1));
     access_write_physical(BX_CPU_THIS_PTR address_xlation.paddress1,
         BX_CPU_THIS_PTR address_xlation.len1,
         ((Bit8u*)data) + (len - BX_CPU_THIS_PTR address_xlation.len1));
+    BX_NOTIFY_LIN_MEMORY_ACCESS(laddr, BX_CPU_THIS_PTR address_xlation.paddress1,
+        BX_CPU_THIS_PTR address_xlation.len1, tlbEntry->get_memtype(),
+        xlate_rw, ((Bit8u*)data) + (len - BX_CPU_THIS_PTR address_xlation.len1));
+    access_write_physical(BX_CPU_THIS_PTR address_xlation.paddress2,
+        BX_CPU_THIS_PTR address_xlation.len2, data);
     BX_NOTIFY_LIN_MEMORY_ACCESS(laddr2, BX_CPU_THIS_PTR address_xlation.paddress2,
         BX_CPU_THIS_PTR address_xlation.len2, tlbEntry2->get_memtype(),
         xlate_rw, (Bit8u*) data);
-    access_write_physical(BX_CPU_THIS_PTR address_xlation.paddress2,
-        BX_CPU_THIS_PTR address_xlation.len2, data);
 #endif
 
 #if BX_X86_DEBUGGER
