@@ -1275,7 +1275,7 @@ bx_phy_address BX_CPU_C::translate_linear(bx_TLB_entry *tlbEntry, bx_address lad
   ppf = PPFOf(paddress);
 
   // direct memory access is NOT allowed by default
-  tlbEntry->lpf = lpf | TLB_NoHostPtr;
+  tlbEntry->lpf = 1;// TETRANE: Disable tlb by messing with lpf (lpf | TLB_NoHostPtr);
   tlbEntry->lpf_mask = lpf_mask;
 #if BX_SUPPORT_PKEYS
   tlbEntry->pkey = pkey;
@@ -1337,7 +1337,7 @@ bx_phy_address BX_CPU_C::translate_linear(bx_TLB_entry *tlbEntry, bx_address lad
 #if BX_X86_DEBUGGER
     if (! hwbreakpoint_check(laddr, BX_HWDebugMemW, BX_HWDebugMemRW))
 #endif
-       tlbEntry->lpf = lpf; // allow direct access with HostPtr
+       tlbEntry->lpf = 1; // TETRANE: Disable tlb by messing with lpf (lpf;) // allow direct access with HostPtr
   }
 
 #if BX_SUPPORT_MEMTYPE
