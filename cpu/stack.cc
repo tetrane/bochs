@@ -143,8 +143,6 @@ void BX_CPP_AttrRegparmN(2) BX_CPU_C::stack_write_byte(bx_address offset, Bit8u 
   if (BX_CPU_THIS_PTR espHostPtr) {
     Bit8u *hostPageAddr = (Bit8u*)(BX_CPU_THIS_PTR espHostPtr + espBiased);
     bx_phy_address pAddr = BX_CPU_THIS_PTR pAddrStackPage + espBiased;
-    BX_NOTIFY_LIN_MEMORY_ACCESS(get_laddr(BX_SEG_REG_SS, offset), pAddr, 1,
-                                MEMTYPE(BX_CPU_THIS_PTR espPageMemtype), BX_WRITE, (Bit8u*) &data);
 
 #if BX_SUPPORT_SMP == 0
     if (BX_CPU_THIS_PTR espPageFineGranularityMapping)
@@ -152,6 +150,8 @@ void BX_CPP_AttrRegparmN(2) BX_CPU_C::stack_write_byte(bx_address offset, Bit8u 
       pageWriteStampTable.decWriteStamp(pAddr, 1);
 
     *hostPageAddr = data;
+    BX_NOTIFY_LIN_MEMORY_ACCESS(get_laddr(BX_SEG_REG_SS, offset), pAddr, 1,
+                                MEMTYPE(BX_CPU_THIS_PTR espPageMemtype), BX_WRITE, (Bit8u*) &data);
   }
   else {
     write_virtual_byte(BX_SEG_REG_SS, offset, data);
@@ -176,8 +176,6 @@ void BX_CPP_AttrRegparmN(2) BX_CPU_C::stack_write_word(bx_address offset, Bit16u
       exception(BX_AC_EXCEPTION, 0);
     }
 #endif
-    BX_NOTIFY_LIN_MEMORY_ACCESS(get_laddr(BX_SEG_REG_SS, offset), pAddr, 2,
-                                MEMTYPE(BX_CPU_THIS_PTR espPageMemtype), BX_WRITE, (Bit8u*) &data);
 
 #if BX_SUPPORT_SMP == 0
     if (BX_CPU_THIS_PTR espPageFineGranularityMapping)
@@ -185,6 +183,8 @@ void BX_CPP_AttrRegparmN(2) BX_CPU_C::stack_write_word(bx_address offset, Bit16u
       pageWriteStampTable.decWriteStamp(pAddr, 2);
 
     WriteHostWordToLittleEndian(hostPageAddr, data);
+    BX_NOTIFY_LIN_MEMORY_ACCESS(get_laddr(BX_SEG_REG_SS, offset), pAddr, 2,
+                                MEMTYPE(BX_CPU_THIS_PTR espPageMemtype), BX_WRITE, (Bit8u*) &data);
   }
   else {
     write_virtual_word(BX_SEG_REG_SS, offset, data);
@@ -209,8 +209,6 @@ void BX_CPP_AttrRegparmN(2) BX_CPU_C::stack_write_dword(bx_address offset, Bit32
       exception(BX_AC_EXCEPTION, 0);
     }
 #endif
-    BX_NOTIFY_LIN_MEMORY_ACCESS(get_laddr(BX_SEG_REG_SS, offset), pAddr, 4,
-                                MEMTYPE(BX_CPU_THIS_PTR espPageMemtype), BX_WRITE, (Bit8u*) &data);
 
 #if BX_SUPPORT_SMP == 0
     if (BX_CPU_THIS_PTR espPageFineGranularityMapping)
@@ -218,6 +216,8 @@ void BX_CPP_AttrRegparmN(2) BX_CPU_C::stack_write_dword(bx_address offset, Bit32
       pageWriteStampTable.decWriteStamp(pAddr, 4);
 
     WriteHostDWordToLittleEndian(hostPageAddr, data);
+    BX_NOTIFY_LIN_MEMORY_ACCESS(get_laddr(BX_SEG_REG_SS, offset), pAddr, 4,
+                                MEMTYPE(BX_CPU_THIS_PTR espPageMemtype), BX_WRITE, (Bit8u*) &data);
   }
   else {
     write_virtual_dword(BX_SEG_REG_SS, offset, data);
@@ -242,8 +242,6 @@ void BX_CPP_AttrRegparmN(2) BX_CPU_C::stack_write_qword(bx_address offset, Bit64
       exception(BX_AC_EXCEPTION, 0);
     }
 #endif
-    BX_NOTIFY_LIN_MEMORY_ACCESS(get_laddr(BX_SEG_REG_SS, offset), pAddr, 8,
-                                MEMTYPE(BX_CPU_THIS_PTR espPageMemtype), BX_WRITE, (Bit8u*) &data);
 
 #if BX_SUPPORT_SMP == 0
     if (BX_CPU_THIS_PTR espPageFineGranularityMapping)
@@ -251,6 +249,8 @@ void BX_CPP_AttrRegparmN(2) BX_CPU_C::stack_write_qword(bx_address offset, Bit64
       pageWriteStampTable.decWriteStamp(pAddr, 8);
 
     WriteHostQWordToLittleEndian(hostPageAddr, data);
+    BX_NOTIFY_LIN_MEMORY_ACCESS(get_laddr(BX_SEG_REG_SS, offset), pAddr, 8,
+                                MEMTYPE(BX_CPU_THIS_PTR espPageMemtype), BX_WRITE, (Bit8u*) &data);
   }
   else {
     write_virtual_qword(BX_SEG_REG_SS, offset, data);
