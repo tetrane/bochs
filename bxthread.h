@@ -65,17 +65,23 @@
 
 #include <pthread.h>
 
+typedef struct
+{
+	pthread_mutex_t raw;
+	pthread_mutexattr_t attr;
+} bx_thread_mutex_t;
+
 #define BX_THREAD_VAR(name) pthread_t (name)
 #define BX_THREAD_FUNC(name,arg) void name(void* arg)
 #define BX_THREAD_EXIT pthread_exit(NULL)
 #define BX_THREAD_CREATE(name,arg,var) \
     pthread_create(&(var), NULL, (void *(*)(void *))&(name), arg)
 #define BX_THREAD_KILL(var) pthread_cancel(var); pthread_join(var, NULL)
-#define BX_LOCK(mutex) pthread_mutex_lock(&(mutex));
-#define BX_UNLOCK(mutex) pthread_mutex_unlock(&(mutex));
-#define BX_MUTEX(mutex) pthread_mutex_t (mutex)
-#define BX_INIT_MUTEX(mutex) pthread_mutex_init(&(mutex),NULL)
-#define BX_FINI_MUTEX(mutex) pthread_mutex_destroy(&(mutex))
+#define BX_LOCK(mutex) pthread_mutex_lock(&(mutex).raw);
+#define BX_UNLOCK(mutex) pthread_mutex_unlock(&(mutex).raw);
+#define BX_MUTEX(mutex) bx_thread_mutex_t (mutex);
+#define BX_INIT_MUTEX(mutex) do { pthread_mutexattr_init(&(mutex).attr); pthread_mutexattr_settype(&(mutex).attr, PTHREAD_MUTEX_RECURSIVE); pthread_mutex_init(&(mutex).raw, &(mutex).attr); } while (0)
+#define BX_FINI_MUTEX(mutex) do { pthread_mutex_destroy(&(mutex).raw); pthread_mutexattr_destroy(&(mutex).attr); } while (0)
 #define BX_MSLEEP(val) usleep(val*1000)
 
 #endif
