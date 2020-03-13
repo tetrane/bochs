@@ -920,7 +920,7 @@ void Replayer::apply_hardware_access(unsigned cpu, uint64_t tsc) {
 			if (access.is_write()) {
 				// The device writes to main memory: this is an INS
 				auto laddr = BX_CPU(cpu)->get_laddr(BX_SEG_REG_ES, BX_CPU(cpu)->gen_reg[7].rrx); // ES:EDI
-				if (BX_CPU(cpu)->access_write_linear(laddr, access.data.size(), BX_CPU(cpu)->sregs[BX_SEG_REG_ES].cache.dpl, 0x0, const_cast<unsigned char*>(access.data.data())) == -1) {
+				if (BX_CPU(cpu)->access_write_linear(laddr, access.data.size(), BX_CPU(cpu)->sregs[BX_SEG_REG_ES].cache.dpl, BX_WRITE, 0x0, const_cast<unsigned char*>(access.data.data())) == -1) {
 					LOG_ERROR("Can't apply write access to " << std::hex << laddr << " (" << std::dec << access.data.size() << " bytes)")
 				}
 			} else {
