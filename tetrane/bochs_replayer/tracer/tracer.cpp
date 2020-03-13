@@ -201,11 +201,11 @@ static std::uint64_t read_msr(unsigned cpu) {
 		case BX_MSR_MTRRFIX4K_F8000:
 			return BX_CPU(cpu)->msr.mtrrfix4k[MsrIndex - BX_MSR_MTRRFIX4K_C0000].u64;
 		case BX_MSR_PAT:
-			return BX_CPU(cpu)->msr.msr_xss;
+			return BX_CPU(cpu)->msr.ia32_xss;
 		case BX_MSR_MTRR_DEFTYPE:
 			return BX_CPU(cpu)->msr.pat.u64;
 		case BX_MSR_XSS:
-			return BX_CPU(cpu)->msr.msr_xss;
+			return BX_CPU(cpu)->msr.ia32_xss;
 		default:
 			break;
 	}
