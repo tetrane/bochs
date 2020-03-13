@@ -4,6 +4,7 @@
 #include <algorithm>
 
 #include "iodev/iodev.h"
+#include "cpu/decoder/ia_opcodes.h"
 
 #include "util/log.h"
 #include "tetrane/bochs_replayer/icount/fns.h"

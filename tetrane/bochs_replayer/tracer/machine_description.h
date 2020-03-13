@@ -4,6 +4,7 @@
 
 #include "bochs.h"
 #include "cpu/cpu.h"
+#include "cpu/msr.h"
 
 #include <rvnbintrace/trace_sections.h>
 
