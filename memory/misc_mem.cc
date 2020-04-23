@@ -615,7 +615,7 @@ bx_bool BX_MEM_C::dbg_fetch_mem(BX_CPU_C *cpu, bx_phy_address addr, unsigned len
 #endif
 
 #if BX_DEBUGGER || BX_GDBSTUB
-bx_bool BX_MEM_C::dbg_set_mem(bx_phy_address addr, unsigned len, Bit8u *buf)
+bx_bool BX_MEM_C::dbg_set_mem(bx_phy_address addr, unsigned len, const Bit8u *buf)
 {
   if ((addr + len - 1) > BX_MEM_THIS len) {
     return(0); // error, beyond limits of memory
