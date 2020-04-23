@@ -66,6 +66,7 @@ void bx_instr_outp(Bit16u addr, unsigned len, unsigned val);
 
 void bx_instr_lin_access(unsigned cpu, bx_address lin, bx_address phy, unsigned len, unsigned memtype, unsigned rw, Bit8u* data);
 void bx_instr_phy_access(unsigned cpu, bx_address phy, unsigned len, unsigned memtype, unsigned rw, Bit8u* data);
+void bx_instr_dev_phy_access(bx_address phy, unsigned len, unsigned rw, Bit8u* data);
 
 void bx_instr_wrmsr(unsigned cpu, unsigned addr, Bit64u value);
 
@@ -123,6 +124,9 @@ void bx_instr_vmexit(unsigned cpu, Bit32u reason, Bit64u qualification);
 
 /* physical memory access */
 #define BX_INSTR_PHY_ACCESS(cpu_id, phy, len, memtype, rw, dataptr)  bx_instr_phy_access(cpu_id, phy, len, memtype, rw, dataptr)
+
+/* physical memory access by a device */
+#define BX_INSTR_DEV_PHY_ACCESS(phy, len, rw, dataptr) bx_instr_dev_phy_access(phy, len, rw, dataptr)
 
 /* feedback from device units */
 #define BX_INSTR_INP(addr, len)               bx_instr_inp(addr, len)
@@ -182,6 +186,9 @@ void bx_instr_vmexit(unsigned cpu, Bit32u reason, Bit64u qualification);
 
 /* physical memory access */
 #define BX_INSTR_PHY_ACCESS(cpu_id, phy, len, memtype, rw)
+
+/* physical memory access by a device */
+#define BX_INSTR_DEV_PHY_ACCESS(phy, len, rw, dataptr)
 
 /* feedback from device units */
 #define BX_INSTR_INP(addr, len)
