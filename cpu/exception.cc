@@ -915,7 +915,10 @@ void BX_CPU_C::exception(unsigned vector, Bit16u error_code)
     error_code = (error_code & 0xfffe) | BX_CPU_THIS_PTR EXT;
   }
 
-  BX_INSTR_EXCEPTION(BX_CPU_ID, vector, error_code);
+  // Tetrane: Don't call the callback with pagefault because the pagefault function already called it
+  if (vector != BX_PF_EXCEPTION) {
+    BX_INSTR_EXCEPTION(BX_CPU_ID, vector, error_code);
+  }
 
 #if BX_DEBUGGER
   bx_dbg_exception(BX_CPU_ID, vector, error_code);
