@@ -737,9 +737,6 @@ BX_CPU_C::read_RMW_linear_qword(unsigned s, bx_address laddr)
   void BX_CPP_AttrRegparmN(1)
 BX_CPU_C::write_RMW_linear_byte(Bit8u val8)
 {
-  BX_DBG_PHY_MEMORY_ACCESS(BX_CPU_ID,
-    BX_CPU_THIS_PTR address_xlation.paddress1, 1, MEMTYPE(BX_CPU_THIS_PTR address_xlation.memtype1), BX_WRITE, 0, (Bit8u*) &val8);
-
   if (BX_CPU_THIS_PTR address_xlation.pages > 2) {
     // Pages > 2 means it stores a host address for direct access.
     Bit8u *hostAddr = (Bit8u *) BX_CPU_THIS_PTR address_xlation.pages;
@@ -749,6 +746,8 @@ BX_CPU_C::write_RMW_linear_byte(Bit8u val8)
     // address_xlation.pages must be 1
     access_write_physical(BX_CPU_THIS_PTR address_xlation.paddress1, 1, &val8);
   }
+
+  BX_NOTIFY_PHY_MEMORY_ACCESS(BX_CPU_THIS_PTR address_xlation.paddress1, 1, MEMTYPE(BX_CPU_THIS_PTR address_xlation.memtype1), BX_RW, 0, (Bit8u*) &val8);
 }
 
   void BX_CPP_AttrRegparmN(1)
@@ -758,35 +757,35 @@ BX_CPU_C::write_RMW_linear_word(Bit16u val16)
     // Pages > 2 means it stores a host address for direct access.
     Bit16u *hostAddr = (Bit16u *) BX_CPU_THIS_PTR address_xlation.pages;
     WriteHostWordToLittleEndian(hostAddr, val16);
-    BX_DBG_PHY_MEMORY_ACCESS(BX_CPU_ID,
+    BX_NOTIFY_PHY_MEMORY_ACCESS(
         BX_CPU_THIS_PTR address_xlation.paddress1, 2, MEMTYPE(BX_CPU_THIS_PTR address_xlation.memtype1),
-        BX_WRITE, 0, (Bit8u*) &val16);
+        BX_RW, 0, (Bit8u*) &val16);
   }
   else if (BX_CPU_THIS_PTR address_xlation.pages == 1) {
     access_write_physical(BX_CPU_THIS_PTR address_xlation.paddress1, 2, &val16);
-    BX_DBG_PHY_MEMORY_ACCESS(BX_CPU_ID,
+    BX_NOTIFY_PHY_MEMORY_ACCESS(
         BX_CPU_THIS_PTR address_xlation.paddress1, 2, MEMTYPE(BX_CPU_THIS_PTR address_xlation.memtype1),
-        BX_WRITE, 0, (Bit8u*) &val16);
+        BX_RW, 0, (Bit8u*) &val16);
   }
   else {
 #ifdef BX_LITTLE_ENDIAN
     access_write_physical(BX_CPU_THIS_PTR address_xlation.paddress1, 1, &val16);
-    BX_DBG_PHY_MEMORY_ACCESS(BX_CPU_ID,
+    BX_NOTIFY_PHY_MEMORY_ACCESS(
         BX_CPU_THIS_PTR address_xlation.paddress1, 1, MEMTYPE(BX_CPU_THIS_PTR address_xlation.memtype1),
-        BX_WRITE, 0,  (Bit8u*) &val16);
+        BX_RW, 0,  (Bit8u*) &val16);
     access_write_physical(BX_CPU_THIS_PTR address_xlation.paddress2, 1, ((Bit8u *) &val16) + 1);
-    BX_DBG_PHY_MEMORY_ACCESS(BX_CPU_ID,
+    BX_NOTIFY_PHY_MEMORY_ACCESS(
         BX_CPU_THIS_PTR address_xlation.paddress2, 1, MEMTYPE(BX_CPU_THIS_PTR address_xlation.memtype2),
-         BX_WRITE, 0, ((Bit8u*) &val16)+1);
+         BX_RW, 0, ((Bit8u*) &val16)+1);
 #else
     access_write_physical(BX_CPU_THIS_PTR address_xlation.paddress1, 1, ((Bit8u *) &val16) + 1);
-    BX_DBG_PHY_MEMORY_ACCESS(BX_CPU_ID,
+    BX_NOTIFY_PHY_MEMORY_ACCESS(
         BX_CPU_THIS_PTR address_xlation.paddress1, 1, MEMTYPE(BX_CPU_THIS_PTR address_xlation.memtype1),
-        BX_WRITE, 0, ((Bit8u*) &val16)+1);
+        BX_RW, 0, ((Bit8u*) &val16)+1);
     access_write_physical(BX_CPU_THIS_PTR address_xlation.paddress2, 1, &val16);
-    BX_DBG_PHY_MEMORY_ACCESS(BX_CPU_ID,
+    BX_NOTIFY_PHY_MEMORY_ACCESS(
         BX_CPU_THIS_PTR address_xlation.paddress2, 1, MEMTYPE(BX_CPU_THIS_PTR address_xlation.memtype2),
-        BX_WRITE, 0,  (Bit8u*) &val16);
+        BX_RW, 0,  (Bit8u*) &val16);
 #endif
   }
 }
@@ -798,45 +797,45 @@ BX_CPU_C::write_RMW_linear_dword(Bit32u val32)
     // Pages > 2 means it stores a host address for direct access.
     Bit32u *hostAddr = (Bit32u *) BX_CPU_THIS_PTR address_xlation.pages;
     WriteHostDWordToLittleEndian(hostAddr, val32);
-    BX_DBG_PHY_MEMORY_ACCESS(BX_CPU_ID,
+    BX_NOTIFY_PHY_MEMORY_ACCESS(
         BX_CPU_THIS_PTR address_xlation.paddress1, 4, MEMTYPE(BX_CPU_THIS_PTR address_xlation.memtype1),
-        BX_WRITE, 0, (Bit8u*) &val32);
+        BX_RW, 0, (Bit8u*) &val32);
   }
   else if (BX_CPU_THIS_PTR address_xlation.pages == 1) {
     access_write_physical(BX_CPU_THIS_PTR address_xlation.paddress1, 4, &val32);
-    BX_DBG_PHY_MEMORY_ACCESS(BX_CPU_ID,
+    BX_NOTIFY_PHY_MEMORY_ACCESS(
         BX_CPU_THIS_PTR address_xlation.paddress1, 4, MEMTYPE(BX_CPU_THIS_PTR address_xlation.memtype1),
-        BX_WRITE, 0, (Bit8u*) &val32);
+        BX_RW, 0, (Bit8u*) &val32);
   }
   else {
 #ifdef BX_LITTLE_ENDIAN
     access_write_physical(BX_CPU_THIS_PTR address_xlation.paddress1,
         BX_CPU_THIS_PTR address_xlation.len1, &val32);
-    BX_DBG_PHY_MEMORY_ACCESS(BX_CPU_ID,
+    BX_NOTIFY_PHY_MEMORY_ACCESS(
         BX_CPU_THIS_PTR address_xlation.paddress1,
         BX_CPU_THIS_PTR address_xlation.len1, MEMTYPE(BX_CPU_THIS_PTR address_xlation.memtype1),
-        BX_WRITE, 0, (Bit8u*) &val32);
+        BX_RW, 0, (Bit8u*) &val32);
     access_write_physical(BX_CPU_THIS_PTR address_xlation.paddress2,
         BX_CPU_THIS_PTR address_xlation.len2,
         ((Bit8u *) &val32) + BX_CPU_THIS_PTR address_xlation.len1);
-    BX_DBG_PHY_MEMORY_ACCESS(BX_CPU_ID,
+    BX_NOTIFY_PHY_MEMORY_ACCESS(
         BX_CPU_THIS_PTR address_xlation.paddress2,
         BX_CPU_THIS_PTR address_xlation.len2, MEMTYPE(BX_CPU_THIS_PTR address_xlation.memtype2),
-        BX_WRITE, 0, ((Bit8u *) &val32) + BX_CPU_THIS_PTR address_xlation.len1);
+        BX_RW, 0, ((Bit8u *) &val32) + BX_CPU_THIS_PTR address_xlation.len1);
 #else
     access_write_physical(BX_CPU_THIS_PTR address_xlation.paddress1,
         BX_CPU_THIS_PTR address_xlation.len1,
         ((Bit8u *) &val32) + (4 - BX_CPU_THIS_PTR address_xlation.len1));
-    BX_DBG_PHY_MEMORY_ACCESS(BX_CPU_ID,
+    BX_NOTIFY_PHY_MEMORY_ACCESS(
         BX_CPU_THIS_PTR address_xlation.paddress1,
         BX_CPU_THIS_PTR address_xlation.len1, MEMTYPE(BX_CPU_THIS_PTR address_xlation.memtype1),
-        BX_WRITE, 0, ((Bit8u *) &val32) + (4 - BX_CPU_THIS_PTR address_xlation.len1));
+        BX_RW, 0, ((Bit8u *) &val32) + (4 - BX_CPU_THIS_PTR address_xlation.len1));
     access_write_physical(BX_CPU_THIS_PTR address_xlation.paddress2,
         BX_CPU_THIS_PTR address_xlation.len2, &val32);
-    BX_DBG_PHY_MEMORY_ACCESS(BX_CPU_ID,
+    BX_NOTIFY_PHY_MEMORY_ACCESS(
         BX_CPU_THIS_PTR address_xlation.paddress2,
         BX_CPU_THIS_PTR address_xlation.len2, MEMTYPE(BX_CPU_THIS_PTR address_xlation.memtype2),
-        BX_WRITE, 0, (Bit8u*) &val32);
+        BX_RW, 0, (Bit8u*) &val32);
 #endif
   }
 }
@@ -848,45 +847,45 @@ BX_CPU_C::write_RMW_linear_qword(Bit64u val64)
     // Pages > 2 means it stores a host address for direct access.
     Bit64u *hostAddr = (Bit64u *) BX_CPU_THIS_PTR address_xlation.pages;
     WriteHostQWordToLittleEndian(hostAddr, val64);
-    BX_DBG_PHY_MEMORY_ACCESS(BX_CPU_ID,
+    BX_NOTIFY_PHY_MEMORY_ACCESS(
         BX_CPU_THIS_PTR address_xlation.paddress1, 8, MEMTYPE(BX_CPU_THIS_PTR address_xlation.memtype1),
-        BX_WRITE, 0, (Bit8u*) &val64);
+        BX_RW, 0, (Bit8u*) &val64);
   }
   else if (BX_CPU_THIS_PTR address_xlation.pages == 1) {
     access_write_physical(BX_CPU_THIS_PTR address_xlation.paddress1, 8, &val64);
-    BX_DBG_PHY_MEMORY_ACCESS(BX_CPU_ID,
+    BX_NOTIFY_PHY_MEMORY_ACCESS(
         BX_CPU_THIS_PTR address_xlation.paddress1, 8, MEMTYPE(BX_CPU_THIS_PTR address_xlation.memtype1),
-        BX_WRITE, 0, (Bit8u*) &val64);
+        BX_RW, 0, (Bit8u*) &val64);
   }
   else {
 #ifdef BX_LITTLE_ENDIAN
     access_write_physical(BX_CPU_THIS_PTR address_xlation.paddress1,
         BX_CPU_THIS_PTR address_xlation.len1, &val64);
-    BX_DBG_PHY_MEMORY_ACCESS(BX_CPU_ID,
+    BX_NOTIFY_PHY_MEMORY_ACCESS(
         BX_CPU_THIS_PTR address_xlation.paddress1,
         BX_CPU_THIS_PTR address_xlation.len1, MEMTYPE(BX_CPU_THIS_PTR address_xlation.memtype1),
-        BX_WRITE, 0, (Bit8u*) &val64);
+        BX_RW, 0, (Bit8u*) &val64);
     access_write_physical(BX_CPU_THIS_PTR address_xlation.paddress2,
         BX_CPU_THIS_PTR address_xlation.len2,
         ((Bit8u *) &val64) + BX_CPU_THIS_PTR address_xlation.len1);
-    BX_DBG_PHY_MEMORY_ACCESS(BX_CPU_ID,
+    BX_NOTIFY_PHY_MEMORY_ACCESS(
         BX_CPU_THIS_PTR address_xlation.paddress2,
         BX_CPU_THIS_PTR address_xlation.len2, MEMTYPE(BX_CPU_THIS_PTR address_xlation.memtype2),
-        BX_WRITE, 0, ((Bit8u *) &val64) + BX_CPU_THIS_PTR address_xlation.len1);
+        BX_RW, 0, ((Bit8u *) &val64) + BX_CPU_THIS_PTR address_xlation.len1);
 #else
     access_write_physical(BX_CPU_THIS_PTR address_xlation.paddress1,
         BX_CPU_THIS_PTR address_xlation.len1,
         ((Bit8u *) &val64) + (8 - BX_CPU_THIS_PTR address_xlation.len1));
-    BX_DBG_PHY_MEMORY_ACCESS(BX_CPU_ID,
+    BX_NOTIFY_PHY_MEMORY_ACCESS(
         BX_CPU_THIS_PTR address_xlation.paddress1,
         BX_CPU_THIS_PTR address_xlation.len1, MEMTYPE(BX_CPU_THIS_PTR address_xlation.memtype1),
-        BX_WRITE, 0, ((Bit8u *) &val64) + (8 - BX_CPU_THIS_PTR address_xlation.len1));
+        BX_RW, 0, ((Bit8u *) &val64) + (8 - BX_CPU_THIS_PTR address_xlation.len1));
     access_write_physical(BX_CPU_THIS_PTR address_xlation.paddress2,
         BX_CPU_THIS_PTR address_xlation.len2, &val64);
-    BX_DBG_PHY_MEMORY_ACCESS(BX_CPU_ID,
+    BX_NOTIFY_PHY_MEMORY_ACCESS(
         BX_CPU_THIS_PTR address_xlation.paddress2,
         BX_CPU_THIS_PTR address_xlation.len2, MEMTYPE(BX_CPU_THIS_PTR address_xlation.memtype2),
-        BX_WRITE, 0, (Bit8u*) &val64);
+        BX_RW, 0, (Bit8u*) &val64);
 #endif
   }
 }
