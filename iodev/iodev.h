@@ -28,6 +28,7 @@
 #include "bochs.h"
 #include "plugin.h"
 #include "param_names.h"
+#include "cpu/cpu.h"
 
 /* number of IRQ lines supported.  In an ISA PC there are two
    PIC chips cascaded together.  each has 8 IRQ lines, so there
@@ -610,6 +611,8 @@ private:
 // memory stub has an assumption that there are no memory accesses splitting 4K page
 BX_CPP_INLINE void DEV_MEM_READ_PHYSICAL(bx_phy_address phy_addr, unsigned len, Bit8u *ptr)
 {
+  BX_NOTIFY_DEV_PHY_MEMORY_ACCESS(phy_addr, len, BX_READ, ptr);
+
   unsigned remainingInPage = 0x1000 - (phy_addr & 0xfff);
   if (len <= remainingInPage) {
     BX_MEM(0)->readPhysicalPage(NULL, phy_addr, len, ptr);
@@ -625,7 +628,9 @@ BX_CPP_INLINE void DEV_MEM_READ_PHYSICAL(bx_phy_address phy_addr, unsigned len, 
 
 BX_CPP_INLINE void DEV_MEM_READ_PHYSICAL_DMA(bx_phy_address phy_addr, unsigned len, Bit8u *ptr)
 {
-  while(len > 0) { 
+  BX_NOTIFY_DEV_PHY_MEMORY_ACCESS(phy_addr, len, BX_READ, ptr);
+
+  while(len > 0) {
     unsigned remainingInPage = 0x1000 - (phy_addr & 0xfff);
     if (len < remainingInPage) remainingInPage = len;
     BX_MEM(0)->dmaReadPhysicalPage(phy_addr, remainingInPage, ptr);
@@ -638,6 +643,8 @@ BX_CPP_INLINE void DEV_MEM_READ_PHYSICAL_DMA(bx_phy_address phy_addr, unsigned l
 // memory stub has an assumption that there are no memory accesses splitting 4K page
 BX_CPP_INLINE void DEV_MEM_WRITE_PHYSICAL(bx_phy_address phy_addr, unsigned len, Bit8u *ptr)
 {
+  BX_NOTIFY_DEV_PHY_MEMORY_ACCESS(phy_addr, len, BX_WRITE, ptr);
+
   unsigned remainingInPage = 0x1000 - (phy_addr & 0xfff);
   if (len <= remainingInPage) {
     BX_MEM(0)->writePhysicalPage(NULL, phy_addr, len, ptr);
@@ -653,7 +660,9 @@ BX_CPP_INLINE void DEV_MEM_WRITE_PHYSICAL(bx_phy_address phy_addr, unsigned len,
 
 BX_CPP_INLINE void DEV_MEM_WRITE_PHYSICAL_DMA(bx_phy_address phy_addr, unsigned len, Bit8u *ptr)
 {
-  while(len > 0) { 
+  BX_NOTIFY_DEV_PHY_MEMORY_ACCESS(phy_addr, len, BX_WRITE, ptr);
+
+  while(len > 0) {
     unsigned remainingInPage = 0x1000 - (phy_addr & 0xfff);
     if (len < remainingInPage) remainingInPage = len;
     BX_MEM(0)->dmaWritePhysicalPage(phy_addr, remainingInPage, ptr);

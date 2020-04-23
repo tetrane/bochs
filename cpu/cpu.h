@@ -450,6 +450,10 @@ BOCHSAPI extern BX_CPU_C   bx_cpu;
   BX_DBG_PHY_MEMORY_ACCESS(BX_CPU_ID, (paddr), (size), (memtype), (rw), (why), (dataptr)); \
 }
 
+#define BX_NOTIFY_DEV_PHY_MEMORY_ACCESS(paddr, size, rw, dataptr) { \
+  BX_INSTR_DEV_PHY_ACCESS((paddr), (size), (rw), (dataptr));      \
+}
+
 // accessors for all eflags in bx_flags_reg_t
 // The macro is used once for each flag bit
 // Do not use for arithmetic flags !

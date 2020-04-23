@@ -62,6 +62,7 @@ void bx_instr_outp(Bit16u addr, unsigned len, unsigned val) {}
 
 void bx_instr_lin_access(unsigned cpu, bx_address lin, bx_address phy, unsigned len, unsigned memtype, unsigned rw, Bit8u* data) {}
 void bx_instr_phy_access(unsigned cpu,                 bx_address phy, unsigned len, unsigned memtype, unsigned rw, Bit8u* data) {}
+void bx_instr_dev_phy_access(                          bx_address phy, unsigned len,                   unsigned rw, Bit8u* data) {}
 
 void bx_instr_wrmsr(unsigned cpu, unsigned addr, Bit64u value) {}
 
