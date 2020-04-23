@@ -845,7 +845,7 @@ void bx_real_sim_c::debug_puts(const char *text)
     sim_to_ci_event(event);
   } else {
     // text mode debugger: just write to console
-    fputs(text, stdout);
+    fputs(text, stderr);
   }
 }
 #endif
