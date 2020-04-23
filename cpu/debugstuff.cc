@@ -245,6 +245,9 @@ void BX_CPU_C::debug(bx_address offset)
 #endif
   }
 
+  BX_INFO(("| CR8=0x%08x",
+      (unsigned) BX_CPU_THIS_PTR get_cr8()));
+
   debug_disasm_instruction(offset);
 }
 
