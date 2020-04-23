@@ -531,6 +531,9 @@ void BX_CPU_C::page_fault(unsigned fault, bx_address laddr, unsigned user, unsig
   VMexit_Event(BX_HARDWARE_EXCEPTION, BX_PF_EXCEPTION, error_code, 1, laddr); // before the CR2 was modified
 #endif
 
+  // Tetrane: Call BX_INSTR_EXCEPTION before updating CR2 because we want the old value in the callback
+  BX_INSTR_EXCEPTION(BX_CPU_ID, BX_PF_EXCEPTION, error_code);
+
   BX_CPU_THIS_PTR cr2 = laddr;
 
 #if BX_SUPPORT_X86_64
