@@ -24247,7 +24247,7 @@ fi
 
 
 
-PRIMARY_TARGET='bochs'
+PRIMARY_TARGET='bochs bochs_replayer'
 PLUGIN_LIBNAME_TRANSFORMATION='%.o=libbx_%.la'
 
 if test "$bx_plugins" = 0; then
@@ -25986,7 +25986,7 @@ fi
 
 
 
-ac_config_files="$ac_config_files Makefile iodev/Makefile iodev/display/Makefile iodev/hdimage/Makefile iodev/usb/Makefile iodev/network/Makefile iodev/sound/Makefile bx_debug/Makefile bios/Makefile cpu/Makefile cpu/avx/Makefile cpu/cpudb/Makefile cpu/fpu/Makefile memory/Makefile gui/Makefile disasm/Makefile ${INSTRUMENT_DIR}/Makefile misc/Makefile doc/docbook/Makefile build/linux/bochs-dlx bxversion.h bxversion.rc build/macosx/Info.plist build/win32/nsis/Makefile build/win32/nsis/bochs.nsi host/linux/pcidev/Makefile ${USER_PLUGINS_MAKEFILE}"
+ac_config_files="$ac_config_files Makefile iodev/Makefile iodev/display/Makefile iodev/hdimage/Makefile iodev/usb/Makefile iodev/network/Makefile iodev/sound/Makefile bx_debug/Makefile bios/Makefile cpu/Makefile cpu/avx/Makefile cpu/cpudb/Makefile cpu/fpu/Makefile memory/Makefile gui/Makefile disasm/Makefile ${INSTRUMENT_DIR}/Makefile instrument/bochs_replayer/Makefile misc/Makefile doc/docbook/Makefile build/linux/bochs-dlx bxversion.h bxversion.rc build/macosx/Info.plist build/win32/nsis/Makefile build/win32/nsis/bochs.nsi host/linux/pcidev/Makefile ${USER_PLUGINS_MAKEFILE}"
 
 cat >confcache <<\_ACEOF
 # This file is a shell script that caches the results of configure
