@@ -34,6 +34,7 @@ docdir          = $(datarootdir)/doc/bochs
 sharedir        = $(datarootdir)/bochs
 top_builddir    = .
 top_srcdir      = $(srcdir)
+git_version     = $(shell cd $(top_srcdir); git describe --tags --always --dirty)
 
 DESTDIR =
 
@@ -43,7 +44,7 @@ MAN_PAGE_1_LIST=bochs bximage bochs-dlx
 MAN_PAGE_5_LIST=bochsrc
 INSTALL_LIST_SHARE=bios/BIOS-bochs-* bios/VGABIOS* bios/SeaBIOS* bios/SeaVGABIOS* bios/bios.bin-* bios/vgabios-cirrus.bin-* @INSTALL_LIST_FOR_PLATFORM@
 INSTALL_LIST_DOC=CHANGES COPYING LICENSE README TODO misc/slirp.conf misc/vnet.conf
-INSTALL_LIST_BIN=bochs@EXE@ bximage@EXE@
+INSTALL_LIST_BIN=bochs@EXE@ bochs_replayer@EXE@ bximage@EXE@
 INSTALL_LIST_BIN_OPTIONAL=bochsdbg@EXE@ @OPTIONAL_TARGET@
 INSTALL_LIST_WIN32=$(INSTALL_LIST_SHARE) $(INSTALL_LIST_DOC) $(INSTALL_LIST_BIN) $(INSTALL_LIST_BIN_OPTIONAL)
 INSTALL_LIST_MACOSX=$(INSTALL_LIST_SHARE) $(INSTALL_LIST_DOC) bochs.scpt
@@ -118,6 +119,7 @@ CXXFLAGS_CONSOLE = @CXXFLAGS_CONSOLE@ $(MCH_CFLAGS) $(FLA_FLAGS)
 BXIMAGE_LINK_OPTS = @BXIMAGE_LINK_OPTS@
 
 BX_INCDIRS = -I. -I$(srcdir)/. -I@INSTRUMENT_DIR@ -I$(srcdir)/@INSTRUMENT_DIR@
+BX_REPLAYER_INCDIRS = -isystem. -isystem $(srcdir)/. -isystem instrument/bochs_replayer -isystem $(srcdir)/instrument/bochs_replayer -I $(srcdir)/tetrane/bochs_replayer
 
 #SUBDIRS = iodev bx_debug
 
@@ -160,8 +162,24 @@ GDBSTUB_OBJS = gdbstub.o
 
 BX_OBJS = @NONINLINE_VAR@
 
+TETRANE_CXX_FLAGS = -std=c++14 -Wall -Wextra -Werror -DGIT_VERSION=\"$(git_version)\"
+
+TETRANE_REPLAYER_OBJS =  \
+	tetrane/bochs_replayer/memhist_tracer/memhist_tracer.o \
+	tetrane/bochs_replayer/replayer/replayer.o \
+	tetrane/bochs_replayer/tracer/cache_writer.o \
+	tetrane/bochs_replayer/tracer/machine_description.o \
+	tetrane/bochs_replayer/tracer/trace_writer.o \
+	tetrane/bochs_replayer/tracer/tracer.o \
+	tetrane/bochs_replayer/util/log.o
+
+BX_REPLAYER_OBJS = logio.o main_replayer.o config.o load32bitOShack.o pc_system.o osdep.o plugin.o crc.o bxthread.o @EXTRA_BX_OBJS@
+
 BX_INCLUDES = bochs.h config.h osdep.h
 
+tetrane/bochs_replayer/%.o: tetrane/bochs_replayer/%.cpp
+	mkdir -p $(dir @OFP@$@)
+	$(CXX) @DASH@c $(BX_REPLAYER_INCDIRS) $(CXXFLAGS) @CXXFP@$< @OFP@$@ $(TETRANE_CXX_FLAGS)
 
 .@CPP_SUFFIX@.o:
 	$(CXX) @DASH@c $(BX_INCDIRS) $(CXXFLAGS) @CXXFP@$< @OFP@$@
@@ -190,6 +208,30 @@ bochs@EXE@: @IODEV_LIB_VAR@ @DISPLAY_LIB_VAR@ @HDIMAGE_LIB_VAR@ @USB_LIB_VAR@ @N
 		$(READLINE_LIB) \
 		$(EXTRA_LINK_OPTS) \
 		$(LIBS)
+
+bochs_replayer@EXE@: @IODEV_LIB_VAR@ @DISPLAY_LIB_VAR@ @HDIMAGE_LIB_VAR@ @USB_LIB_VAR@ @NETWORK_LIB_VAR@ @SOUND_LIB_VAR@ \
+		@DEBUGGER_VAR@ cpu/libcpu.a @AVX_LIB_VAR@ cpu/cpudb/libcpudb.a memory/libmemory.a \
+		gui/libgui.a @DISASM_VAR@ instrument/bochs_replayer/libinstrument.a $(BX_REPLAYER_OBJS) $(TETRANE_REPLAYER_OBJS) \
+		$(SIMX86_OBJS) @FPU_VAR@ @GDBSTUB_VAR@ @PLUGIN_VAR@
+	@LINK@ @EXPORT_DYNAMIC@ $(BX_REPLAYER_OBJS) $(TETRANE_REPLAYER_OBJS) $(SIMX86_OBJS) \
+		@IODEV_LIB_VAR@ @DISPLAY_LIB_VAR@ @HDIMAGE_LIB_VAR@ @USB_LIB_VAR@ @NETWORK_LIB_VAR@ @SOUND_LIB_VAR@ \
+		@DEBUGGER_VAR@ cpu/libcpu.a @AVX_LIB_VAR@ cpu/cpudb/libcpudb.a \
+		 memory/libmemory.a gui/libgui.a \
+		@DISASM_VAR@ instrument/bochs_replayer/libinstrument.a @PLUGIN_LIB@ \
+		@GDBSTUB_VAR@ @FPU_VAR@ \
+		@NONPLUGIN_GUI_LINK_OPTS@ \
+		$(DEVICE_LINK_OPTS) \
+		$(MCH_LINK_FLAGS) \
+		$(SIMX86_LINK_FLAGS) \
+		$(READLINE_LIB) \
+		$(EXTRA_LINK_OPTS) \
+		$(LIBS) \
+		-L$(srcdir)/tetrane/lib -lrvnbintrace -lrvnmemhistwriter -lrvnmetadata \
+		-lmagic -lrvnbinresource -lrvnjsonresource -lrvnsqlite -lsqlite3 -lboost_system -lboost_filesystem \
+		-lrvncorevirtualbox -lboost_program_options -lrvnsyncpoint
+
+main_replayer.o: main_replayer.@CPP_SUFFIX@
+	$(CXX) @DASH@c $(BX_REPLAYER_INCDIRS) $(CXXFLAGS) @CXXFP@$< @OFP@$@ -std=c++14 -DGIT_VERSION=\"$(git_version)\"
 
 # Special make target for cygwin/mingw using dlltool instead of
 # libtool.  This creates a .DEF file, and exports file, an import library,
@@ -363,6 +405,11 @@ gui/libgui.a::
 	$(MAKE) $(MDEFINES) libinstrument.a
 	@CD_UP_TWO@
 
+instrument/bochs_replayer/libinstrument.a::
+	cd instrument/bochs_replayer @COMMAND_SEPARATOR@
+	$(MAKE) $(MDEFINES) libinstrument.a
+	@CD_UP_TWO@
+
 libbochs.a:
 	-rm -f libbochs.a
 	ar rv libbochs.a $(EXTERN_ENVIRONMENT_OBJS)
@@ -438,6 +485,7 @@ install_share::
 	for i in $(INSTALL_LIST_SHARE); do if test -f $$i; then install -m 644 $$i $(DESTDIR)$(sharedir); else install -m 644 $(srcdir)/$$i $(DESTDIR)$(sharedir); fi; done
 	-mkdir $(DESTDIR)$(sharedir)/keymaps
 	for i in $(srcdir)/gui/keymaps/*.map; do install -m 644 $$i $(DESTDIR)$(sharedir)/keymaps/; done
+	install -m 644 $(srcdir)/.bochsrc $(DESTDIR)$(sharedir)/bochsrc
 
 install_doc::
 	for i in $(DESTDIR)$(docdir); do mkdir -p $$i && test -d $$i && test -w $$i; done
@@ -524,6 +572,8 @@ clean:
 	@RMCOMMAND@ *.a
 	@RMCOMMAND@ bochs
 	@RMCOMMAND@ bochs.exe
+	@RMCOMMAND@ bochs_replayer
+	@RMCOMMAND@ bochs_replayer.exe
 	@RMCOMMAND@ bximage
 	@RMCOMMAND@ bximage.exe
 	@RMCOMMAND@ bxhub
@@ -538,6 +588,7 @@ clean:
 	@RMCOMMAND@ -rf bochs.app
 	@RMCOMMAND@ -rf .libs
 	@RMCOMMAND@ .win32_dll_plugin_target
+	@RMCOMMAND@ $(TETRANE_REPLAYER_OBJS)
 
 local-dist-clean: clean
 	@RMCOMMAND@ config.h config.status config.log config.cache
@@ -599,6 +650,9 @@ all-clean: clean @CLEAN_DOCBOOK_VAR@ @CLEAN_PCIDEV_VAR@
 	cd misc @COMMAND_SEPARATOR@
 	$(MAKE) clean
 	@CD_UP_ONE@
+	cd instrument/bochs_replayer @COMMAND_SEPARATOR@
+	$(MAKE) clean
+	@CD_UP_TWO@
 
 dist-clean: local-dist-clean
 	cd iodev @COMMAND_SEPARATOR@

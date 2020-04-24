@@ -1,0 +1,10 @@
+# Reven only support corei7_sandy_bridge_2600k with one core
+cpu: count=1, model=corei7_sandy_bridge_2600k
+
+# Path to the ROMs
+romimage: file=$BXSHARE/BIOS-bochs-latest
+vgaromimage: file=$BXSHARE/VGABIOS-lgpl-latest
+
+# Disable GUI
+config_interface: textconfig
+display_library: nogui
