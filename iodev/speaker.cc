@@ -1,9 +1,9 @@
 /////////////////////////////////////////////////////////////////////////
-// $Id: speaker.cc 13293 2017-09-10 15:55:13Z vruppert $
+// $Id: speaker.cc 13904 2020-07-08 21:31:49Z vruppert $
 /////////////////////////////////////////////////////////////////////////
 //
 //  Copyright (C) 2003       David N. Welton <davidw@dedasys.com>.
-//  Copyright (C) 2003-2017  The Bochs Project
+//  Copyright (C) 2003-2020  The Bochs Project
 //
 //  This library is free software; you can redistribute it and/or
 //  modify it under the terms of the GNU Lesser General Public
@@ -81,6 +81,8 @@ Bit32u beep_callback(void *dev, Bit16u rate, Bit8u *buffer, Bit32u len);
 
 void speaker_init_options(void)
 {
+  bx_list_c *deplist;
+
   bx_list_c *sound = (bx_list_c*)SIM->get_param("sound");
   bx_list_c *menu = new bx_list_c(sound, "speaker", "PC speaker output configuration");
   menu->set_options(menu->SERIES_ASK);
@@ -90,9 +92,19 @@ void speaker_init_options(void)
       "The mode can be one these: 'none', 'sound', 'system' or 'gui'",
       speaker_mode_list, 1, BX_SPK_MODE_NONE);
   mode->set_ask_format("Select speker output mode [%s] ");
-  bx_list_c *deplist = new bx_list_c(NULL);
+#if BX_SUPPORT_SOUNDLOW
+  bx_param_num_c *volume = new bx_param_num_c(menu, "volume", "Speaker volume",
+      "Set the PC speaker volume", 0, 15, 15);
+#endif
+  deplist = new bx_list_c(NULL);
   deplist->add(mode);
   enabled->set_dependent_list(deplist);
+#if BX_SUPPORT_SOUNDLOW
+  deplist = new bx_list_c(NULL);
+  deplist->add(volume);
+  mode->set_dependent_list(deplist, 0);
+  mode->set_dependent_bitmap(BX_SPK_MODE_SOUND, 1);
+#endif
 }
 
 Bit32s speaker_options_parser(const char *context, int num_params, char *params[])
@@ -185,7 +197,7 @@ void bx_speaker_c::init(void)
   if (!SIM->get_param_bool("enabled", base)->get()) {
     BX_INFO(("PC speaker output disabled"));
     // mark unused plugin for removal
-    ((bx_param_bool_c*)((bx_list_c*)SIM->get_param(BXPN_PLUGIN_CTRL))->get_by_name("sb16"))->set(0);
+    ((bx_param_bool_c*)((bx_list_c*)SIM->get_param(BXPN_PLUGIN_CTRL))->get_by_name("speaker"))->set(0);
     return;
   }
   output_mode = SIM->get_param_enum("mode", base)->get();
@@ -195,6 +207,13 @@ void bx_speaker_c::init(void)
       waveout = DEV_sound_get_waveout(0);
       if (waveout != NULL) {
         beep_active = 0;
+        beep_volume = SIM->get_param_num("volume", base)->get();
+#if BX_HAVE_REALTIME_USEC
+        dsp_active = 0;
+        dsp_start_usec = bx_get_realtime64_usec();
+        dsp_cb_usec = 0;
+        dsp_count = 0;
+#endif
         BX_INIT_MUTEX(beep_mutex);
         beep_callback_id = waveout->register_wave_callback(theSpeaker, beep_callback);
         BX_INFO(("Using lowlevel sound support for output"));
@@ -234,31 +253,70 @@ void bx_speaker_c::reset(unsigned type)
 #if BX_SUPPORT_SOUNDLOW
 Bit32u bx_speaker_c::beep_generator(Bit16u rate, Bit8u *buffer, Bit32u len)
 {
-  Bit32u j = 0;
+  Bit32u j = 0, ret = 0;
   Bit16u beep_samples;
-  static Bit8u beep_level = 0x40;
   static Bit16u beep_pos = 0;
 
   BX_LOCK(beep_mutex);
   if (!beep_active) {
-    BX_UNLOCK(beep_mutex);
-    return 0;
+    beep_samples = 0;
+  } else {
+    beep_samples = (Bit32u)((float)rate / beep_frequency / 2);
   }
-  beep_samples = (Bit32u)((float)rate / beep_frequency / 2);
+  if (beep_samples == 0) {
+#if BX_SUPPORT_SOUNDLOW && BX_HAVE_REALTIME_USEC
+    if (dsp_active) {
+      ret = dsp_generator(rate, buffer, len);
+    }
+#endif
+    BX_UNLOCK(beep_mutex);
+    return ret;
+  }
   do {
-    buffer[j++] = 0;
-    buffer[j++] = beep_level;
-    buffer[j++] = 0;
-    buffer[j++] = beep_level;
+    buffer[j++] = (Bit8u)beep_level;
+    buffer[j++] = (Bit8u)(beep_level >> 8);
+    buffer[j++] = (Bit8u)beep_level;
+    buffer[j++] = (Bit8u)(beep_level >> 8);
     if ((++beep_pos % beep_samples) == 0) {
-      beep_level ^= 0x80;
+      beep_level *= -1;
       beep_pos = 0;
       beep_samples = (Bit32u)((float)rate / beep_frequency / 2);
+      if (beep_samples == 0) break;
     }
   } while (j < len);
   BX_UNLOCK(beep_mutex);
   return len;
 }
+
+#if BX_SUPPORT_SOUNDLOW && BX_HAVE_REALTIME_USEC
+Bit32u bx_speaker_c::dsp_generator(Bit16u rate, Bit8u *buffer, Bit32u len)
+{
+  Bit32u i = 0, j = 0;
+  double tmp_dsp_usec, step_usec;
+
+  Bit64u new_dsp_cb_usec = bx_get_realtime64_usec() - dsp_start_usec;
+  if (dsp_cb_usec == 0) {
+    dsp_cb_usec = new_dsp_cb_usec - 25000;
+  }
+  tmp_dsp_usec = (double)dsp_cb_usec;
+  step_usec = 1000000.0 / (double)rate;
+  do {
+    if ((i < dsp_count) && (dsp_event_buffer[i] < (Bit64u)tmp_dsp_usec)) {
+      beep_level *= -1;
+      i++;
+    }
+    buffer[j++] = (Bit8u)beep_level;
+    buffer[j++] = (Bit8u)(beep_level >> 8);
+    buffer[j++] = (Bit8u)beep_level;
+    buffer[j++] = (Bit8u)(beep_level >> 8);
+    tmp_dsp_usec += step_usec;
+  } while (j < len);
+  dsp_active = 0;
+  dsp_count = 0;
+  dsp_cb_usec = new_dsp_cb_usec;
+  return len;
+}
+#endif
 
 Bit32u beep_callback(void *dev, Bit16u rate, Bit8u *buffer, Bit32u len)
 {
@@ -280,6 +338,9 @@ void bx_speaker_c::beep_on(float frequency)
       if ((waveout != NULL) && (frequency != beep_frequency)) {
         BX_LOCK(beep_mutex);
         beep_frequency = frequency;
+        if (!beep_active) {
+          beep_level = (Bit16s)(0x4000 * (beep_volume / 15.0f));
+        }
         beep_active = 1;
         BX_UNLOCK(beep_mutex);
       }
@@ -361,4 +422,23 @@ void bx_speaker_c::beep_off()
       break;
   }
   beep_frequency = 0.0;
+}
+
+void bx_speaker_c::set_line(bx_bool level)
+{
+#if BX_SUPPORT_SOUNDLOW && BX_HAVE_REALTIME_USEC
+  if (output_mode == BX_SPK_MODE_SOUND) {
+    BX_LOCK(beep_mutex);
+    Bit64u timestamp = bx_get_realtime64_usec() - dsp_start_usec;
+    dsp_active = 1;
+    if (dsp_count < 500) {
+      dsp_event_buffer[dsp_count++] = timestamp;
+    } else {
+      BX_ERROR(("DSP event buffer full"));
+    }
+    BX_UNLOCK(beep_mutex);
+  }
+#else
+  BX_DEBUG(("setting speaker line to %d", level));
+#endif
 }

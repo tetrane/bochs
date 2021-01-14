@@ -1,8 +1,8 @@
 ///////////////////////////////////////////////////////////////////////
-// $Id: pit.cc 13188 2017-04-15 20:31:07Z vruppert $
+// $Id: pit.cc 13508 2018-05-14 18:17:04Z vruppert $
 /////////////////////////////////////////////////////////////////////////
 //
-//  Copyright (C) 2001-2017  The Bochs Project
+//  Copyright (C) 2001-2018  The Bochs Project
 //
 //  This library is free software; you can redistribute it and/or
 //  modify it under the terms of the GNU Lesser General Public
@@ -119,9 +119,11 @@ void bx_pit_c::init(void)
 
   BX_PIT_THIS s.speaker_data_on = 0;
   BX_PIT_THIS s.speaker_active = 0;
+  BX_PIT_THIS s.speaker_level = 0;
 
   BX_PIT_THIS s.timer.init();
   BX_PIT_THIS s.timer.set_OUT_handler(0, irq_handler);
+  BX_PIT_THIS s.timer.set_OUT_handler(2, speaker_handler);
 
   Bit64u my_time_usec = bx_virt_timer.time_usec(BX_PIT_THIS is_realtime);
 
@@ -170,6 +172,7 @@ void bx_pit_c::register_state(void)
   bx_list_c *list = new bx_list_c(SIM->get_bochs_root(), "pit", "8254 PIT State");
   new bx_shadow_bool_c(list, "speaker_data_on", &BX_PIT_THIS s.speaker_data_on);
   new bx_shadow_bool_c(list, "speaker_active", &BX_PIT_THIS s.speaker_active);
+  new bx_shadow_bool_c(list, "speaker_level", &BX_PIT_THIS s.speaker_level);
   new bx_shadow_num_c(list, "last_usec", &BX_PIT_THIS s.last_usec);
   new bx_shadow_num_c(list, "last_next_event_time", &BX_PIT_THIS s.last_next_event_time);
   new bx_shadow_num_c(list, "total_ticks", &BX_PIT_THIS s.total_ticks);
@@ -181,7 +184,7 @@ void bx_pit_c::register_state(void)
 
 void bx_pit_c::after_restore_state(void)
 {
-  if (BX_PIT_THIS s.speaker_active) {
+  if (BX_PIT_THIS s.speaker_active && (BX_PIT_THIS s.timer.get_mode(2) == 3)) {
     Bit32u value32 = BX_PIT_THIS get_timer(2);
     if (value32 == 0) value32 = 0x10000;
     DEV_speaker_beep_on((float)(1193180.0 / value32));
@@ -295,7 +298,7 @@ void bx_pit_c::write(Bit32u address, Bit32u dvalue, unsigned io_len)
   Bit64u my_time_usec = bx_virt_timer.time_usec(BX_PIT_THIS is_realtime);
   Bit64u time_passed = my_time_usec-BX_PIT_THIS s.last_usec;
   Bit32u value32, time_passed32 = (Bit32u)time_passed;
-  bx_bool new_speaker_active;
+  bx_bool new_speaker_active, new_speaker_level;
 
   if (time_passed32) {
     periodic(time_passed32);
@@ -317,7 +320,8 @@ void bx_pit_c::write(Bit32u address, Bit32u dvalue, unsigned io_len)
 
     case 0x42: /* timer 2: write count register */
       BX_PIT_THIS s.timer.write(2, value);
-      if (BX_PIT_THIS s.speaker_active && BX_PIT_THIS new_timer_count(2)) {
+      if (BX_PIT_THIS s.speaker_active && (BX_PIT_THIS s.timer.get_mode(2) == 3) &&
+          BX_PIT_THIS new_timer_count(2)) {
         value32 = BX_PIT_THIS get_timer(2);
         if (value32 == 0) value32 = 0x10000;
         DEV_speaker_beep_on((float)(1193180.0 / value32));
@@ -332,15 +336,23 @@ void bx_pit_c::write(Bit32u address, Bit32u dvalue, unsigned io_len)
       BX_PIT_THIS s.timer.set_GATE(2, value & 0x01);
       BX_PIT_THIS s.speaker_data_on = (value >> 1) & 0x01;
       new_speaker_active = ((value & 3) == 3);
-      if (BX_PIT_THIS s.speaker_active != new_speaker_active) {
-        if (new_speaker_active) {
-          value32 = BX_PIT_THIS get_timer(2);
-          if (value32 == 0) value32 = 0x10000;
-          DEV_speaker_beep_on((float)(1193180.0 / value32));
-        } else {
-          DEV_speaker_beep_off();
+      if (BX_PIT_THIS s.timer.get_mode(2) == 3) {
+        if (BX_PIT_THIS s.speaker_active != new_speaker_active) {
+          if (new_speaker_active) {
+            value32 = BX_PIT_THIS get_timer(2);
+            if (value32 == 0) value32 = 0x10000;
+            DEV_speaker_beep_on((float)(1193180.0 / value32));
+          } else {
+            DEV_speaker_beep_off();
+          }
+          BX_PIT_THIS s.speaker_active = new_speaker_active;
         }
-        BX_PIT_THIS s.speaker_active = new_speaker_active;
+      } else {
+        new_speaker_level = BX_PIT_THIS s.speaker_data_on & BX_PIT_THIS s.timer.read_OUT(2);
+        if (BX_PIT_THIS s.speaker_level != new_speaker_level) {
+          DEV_speaker_set_line(new_speaker_level);
+          BX_PIT_THIS s.speaker_level = new_speaker_level;
+        }
       }
       break;
 
@@ -401,6 +413,13 @@ void bx_pit_c::irq_handler(bx_bool value)
     } else {
       DEV_pic_lower_irq(0);
     }
+  }
+}
+
+void bx_pit_c::speaker_handler(bx_bool value)
+{
+  if (BX_PIT_THIS s.timer.get_mode(2) != 3) {
+    DEV_speaker_set_line(value & BX_PIT_THIS s.speaker_data_on);
   }
 }
 

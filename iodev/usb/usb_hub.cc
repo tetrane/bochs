@@ -1,11 +1,11 @@
 /////////////////////////////////////////////////////////////////////////
-// $Id: usb_hub.cc 13248 2017-06-01 20:04:10Z vruppert $
+// $Id: usb_hub.cc 13916 2020-08-06 20:21:14Z vruppert $
 /////////////////////////////////////////////////////////////////////////
 //
 // USB hub emulation support (ported from QEMU)
 //
 // Copyright (C) 2005       Fabrice Bellard
-// Copyright (C) 2009-2016  The Bochs Project
+// Copyright (C) 2009-2020  The Bochs Project
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -194,7 +194,7 @@ static const Bit8u bx_hub_hub_descriptor[] =
   /* DeviceRemovable and PortPwrCtrlMask patched in later */
 };
 
-static int hub_count = 0;
+static Bit8u hub_count = 0;
 
 
 void usb_hub_restore_handler(void *dev, bx_list_c *conf);
@@ -234,8 +234,8 @@ usb_hub_device_c::usb_hub_device_c(Bit8u ports)
 
   // config options
   bx_list_c *usb_rt = (bx_list_c*)SIM->get_param(BXPN_MENU_RUNTIME_USB);
-  sprintf(pname, "exthub%d", ++hub_count);
-  sprintf(label, "External Hub #%d Configuration", hub_count);
+  sprintf(pname, "exthub%u", ++hub_count);
+  sprintf(label, "External Hub #%u Configuration", hub_count);
   hub.config = new bx_list_c(usb_rt, pname, label);
   hub.config->set_options(bx_list_c::SHOW_PARENT);
   hub.config->set_device_param(this);
@@ -273,7 +273,7 @@ usb_hub_device_c::~usb_hub_device_c(void)
 void usb_hub_device_c::register_state_specific(bx_list_c *parent)
 {
   Bit8u i;
-  char portnum[6];
+  char portnum[16];
   bx_list_c *port, *pconf, *config;
 
   hub.state = new bx_list_c(parent, "hub", "USB HUB Device State");

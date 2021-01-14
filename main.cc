@@ -1,8 +1,8 @@
 /////////////////////////////////////////////////////////////////////////
-// $Id: main.cc 13241 2017-05-28 08:13:06Z vruppert $
+// $Id: main.cc 14071 2021-01-08 19:04:41Z vruppert $
 /////////////////////////////////////////////////////////////////////////
 //
-//  Copyright (C) 2001-2017  The Bochs Project
+//  Copyright (C) 2001-2021  The Bochs Project
 //
 //  This library is free software; you can redistribute it and/or
 //  modify it under the terms of the GNU Lesser General Public
@@ -27,6 +27,7 @@
 #endif
 #include "cpu/cpu.h"
 #include "iodev/iodev.h"
+#include "iodev/hdimage/hdimage.h"
 
 #ifdef HAVE_LOCALE_H
 #include <locale.h>
@@ -60,6 +61,7 @@ bx_bool bx_gui_sighandler = 0;
 
 int  bx_init_main(int argc, char *argv[]);
 void bx_init_hardware(void);
+void bx_plugin_ctrl_reset(bx_bool init_done);
 void bx_init_options(void);
 void bx_init_bx_dbg(void);
 
@@ -95,23 +97,39 @@ BOCHSAPI BX_MEM_C bx_mem;
 
 char *bochsrc_filename = NULL;
 
+size_t bx_get_timestamp(char *buffer)
+{
+#if VER_SVNFLAG == 1
+#ifdef __DATE__
+#ifdef __TIME__
+  sprintf(buffer, "Compiled on %s at %s", __DATE__, __TIME__);
+#else
+  sprintf(buffer, "Compiled on %s", __DATE__);
+#endif
+#else
+  buffer[0] = 0;
+#endif
+#else
+  // Releases use the timestamp from README file
+  sprintf(buffer, "Timestamp: %s", REL_TIMESTAMP);
+#endif
+  return strlen(buffer);
+}
+
 void bx_print_header()
 {
-  printf("%s\n", divider);
   char buffer[128];
-  sprintf (buffer, "Bochs x86 Emulator %s\n", VER_STRING);
+
+  printf("%s\n", divider);
+  sprintf (buffer, "Bochs x86 Emulator %s\n", VERSION);
   bx_center_print(stdout, buffer, 72);
   if (REL_STRING[0]) {
     sprintf(buffer, "%s\n", REL_STRING);
     bx_center_print(stdout, buffer, 72);
-#ifdef __DATE__
-#ifdef __TIME__
-    sprintf(buffer, "Compiled on %s at %s\n", __DATE__, __TIME__);
-#else
-    sprintf(buffer, "Compiled on %s\n", __DATE__);
-#endif
-    bx_center_print(stdout, buffer, 72);
-#endif
+    if (bx_get_timestamp(buffer) > 0) {
+      bx_center_print(stdout, buffer, 72);
+      printf("\n");
+    }
   }
   printf("%s\n", divider);
 }
@@ -202,43 +220,23 @@ void print_tree(bx_param_c *node, int level, bx_bool xml)
 
   switch (node->get_type()) {
     case BXT_PARAM_NUM:
-      if (((bx_param_num_c*)node)->get_base() == BASE_DEC) {
-        dbg_printf("" FMT_LL "d", ((bx_param_num_c*)node)->get64());
-        if (! xml) dbg_printf(" (number)");
-      } else {
-        dbg_printf("0x" FMT_LL "x", ((bx_param_num_c*)node)->get64());
-        if (! xml) dbg_printf(" (hex number)");
-      }
-      break;
     case BXT_PARAM_BOOL:
-      dbg_printf("%s", ((bx_param_bool_c*)node)->get()?"true":"false");
-      if (! xml) dbg_printf(" (boolean)");
-      break;
     case BXT_PARAM_ENUM:
-      dbg_printf("'%s'", ((bx_param_enum_c*)node)->get_selected());
-      if (! xml) dbg_printf(" (enum)");
-      break;
     case BXT_PARAM_STRING:
-      ((bx_param_string_c*)node)->sprint(tmpstr, BX_PATHNAME_LEN, 0);
-      if (((bx_param_string_c*)node)->get_options() & bx_param_string_c::RAW_BYTES) {
-        dbg_printf("'%s'", tmpstr);
-        if (! xml) dbg_printf(" (raw byte string)");
-      } else {
-        dbg_printf("'%s'", tmpstr);
-        if (! xml) dbg_printf(" (string)");
-      }
+      node->dump_param(tmpstr, BX_PATHNAME_LEN, 1);
+      dbg_printf("%s", tmpstr);
       break;
     case BXT_LIST:
       {
+        if (!xml) dbg_printf("{");
         dbg_printf("\n");
         bx_list_c *list = (bx_list_c*)node;
         for (i=0; i < list->get_size(); i++) {
           print_tree(list->get(i), level+1, xml);
         }
-        if (xml) {
-          for (i=0; i<level; i++)
-            dbg_printf("  ");
-        }
+        for (i=0; i<level; i++)
+          dbg_printf("  ");
+        if (!xml) dbg_printf("}");
         break;
       }
     case BXT_PARAM_DATA:
@@ -360,6 +358,7 @@ int bxmain(void)
     fgets(buf, sizeof(buf), stdin);
   }
 #endif
+  plugin_cleanup();
   BX_INSTR_EXIT_ENV();
   return SIM->get_exit_code();
 }
@@ -461,7 +460,7 @@ int split_string_into_argv(char *string, int *argc_out, char **argv, int max_arg
 int RedirectIOToConsole()
 {
   int hConHandle;
-  long lStdHandle;
+  Bit64s lStdHandle;
   FILE *fp;
   // allocate a console for this app
   FreeConsole();
@@ -470,20 +469,20 @@ int RedirectIOToConsole()
     return 0;
   }
   // redirect unbuffered STDOUT to the console
-  lStdHandle = (long)GetStdHandle(STD_OUTPUT_HANDLE);
-  hConHandle = _open_osfhandle(lStdHandle, _O_TEXT);
+  lStdHandle = (Bit64s)GetStdHandle(STD_OUTPUT_HANDLE);
+  hConHandle = _open_osfhandle((long)lStdHandle, _O_TEXT);
   fp = _fdopen(hConHandle, "w");
   *stdout = *fp;
   setvbuf(stdout, NULL, _IONBF, 0);
   // redirect unbuffered STDIN to the console
-  lStdHandle = (long)GetStdHandle(STD_INPUT_HANDLE);
-  hConHandle = _open_osfhandle(lStdHandle, _O_TEXT);
+  lStdHandle = (Bit64s)GetStdHandle(STD_INPUT_HANDLE);
+  hConHandle = _open_osfhandle((long)lStdHandle, _O_TEXT);
   fp = _fdopen(hConHandle, "r");
   *stdin = *fp;
   setvbuf(stdin, NULL, _IONBF, 0);
   // redirect unbuffered STDERR to the console
-  lStdHandle = (long)GetStdHandle(STD_ERROR_HANDLE);
-  hConHandle = _open_osfhandle(lStdHandle, _O_TEXT);
+  lStdHandle = (Bit64s)GetStdHandle(STD_ERROR_HANDLE);
+  hConHandle = _open_osfhandle((long)lStdHandle, _O_TEXT);
   fp = _fdopen(hConHandle, "w");
   *stderr = *fp;
   setvbuf(stderr, NULL, _IONBF, 0);
@@ -568,12 +567,13 @@ void print_usage(void)
     "  -n               no configuration file\n"
     "  -f configfile    specify configuration file\n"
     "  -q               quick start (skip configuration interface)\n"
-    "  -benchmark N     run bochs in benchmark mode for N millions of emulated ticks\n"
+    "  -benchmark N     run Bochs in benchmark mode for N millions of emulated ticks\n"
 #if BX_ENABLE_STATISTICS
-    "  -dumpstats N     dump bochs stats every N millions of emulated ticks\n"
+    "  -dumpstats N     dump Bochs stats every N millions of emulated ticks\n"
 #endif
     "  -r path          restore the Bochs state from path\n"
     "  -log filename    specify Bochs log file name\n"
+    "  -unlock          unlock Bochs images leftover from previous session\n"
 #if BX_DEBUGGER
     "  -rc filename     execute debugger commands stored in file\n"
     "  -dbglog filename specify Bochs internal debugger log file name\n"
@@ -610,6 +610,21 @@ int bx_init_main(int argc, char *argv[])
   // initalization must be done early because some destructors expect
   // the bochs config options to exist by the time they are called.
   bx_init_bx_dbg();
+
+#if BX_PLUGINS && BX_HAVE_GETENV && BX_HAVE_SETENV
+  // set a default plugin path, in case the user did not specify one
+  if (getenv("LTDL_LIBRARY_PATH") != NULL) {
+    BX_INFO(("LTDL_LIBRARY_PATH is set to '%s'", getenv("LTDL_LIBRARY_PATH")));
+  } else {
+    BX_INFO(("LTDL_LIBRARY_PATH not set. using compile time default '%s'",
+        BX_PLUGIN_PATH));
+    setenv("LTDL_LIBRARY_PATH", BX_PLUGIN_PATH, 1);
+  }
+#endif
+  // initialize plugin system. This must happen before we attempt to
+  // load any modules.
+  plugin_startup();
+
   bx_init_options();
 
   bx_print_header();
@@ -698,6 +713,9 @@ int bx_init_main(int argc, char *argv[])
     else if (!strcmp("-log", argv[arg])) {
       if (++arg >= argc) BX_PANIC(("-log must be followed by a filename"));
       else SIM->get_param_string(BXPN_LOG_FILENAME)->set(argv[arg]);
+    }
+    else if (!strcmp("-unlock", argv[arg])) {
+      SIM->get_param_bool(BXPN_UNLOCK_IMAGES)->set(1);
     }
 #if BX_DEBUGGER
     else if (!strcmp("-dbglog", argv[arg])) {
@@ -805,9 +823,7 @@ int bx_init_main(int argc, char *argv[])
     CFRelease(bxshareDir);
   }
 #endif
-#if BX_PLUGINS
-  // set a default plugin path, in case the user did not specify one
-#if BX_WITH_CARBON
+#if BX_PLUGINS && BX_WITH_CARBON
   // if there is no stdin, then we must create our own LTDL_LIBRARY_PATH.
   // also if there is no LTDL_LIBRARY_PATH, but we have a bundle since we're here
   // This is here so that it is available whenever --with-carbon is defined but
@@ -841,16 +857,7 @@ int bx_init_main(int argc, char *argv[])
     BX_INFO(("now my LTDL_LIBRARY_PATH is %s", getenv("LTDL_LIBRARY_PATH")));
     CFRelease(libDir);
   }
-#elif BX_HAVE_GETENV && BX_HAVE_SETENV
-  if (getenv("LTDL_LIBRARY_PATH") != NULL) {
-    BX_INFO(("LTDL_LIBRARY_PATH is set to '%s'", getenv("LTDL_LIBRARY_PATH")));
-  } else {
-    BX_INFO(("LTDL_LIBRARY_PATH not set. using compile time default '%s'",
-        BX_PLUGIN_PATH));
-    setenv("LTDL_LIBRARY_PATH", BX_PLUGIN_PATH, 1);
-  }
-#endif
-#endif  /* if BX_PLUGINS */
+#endif  /* if BX_PLUGINS && BX_WITH_CARBON */
 #if BX_HAVE_GETENV && BX_HAVE_SETENV
   if (getenv("BXSHARE") != NULL) {
     BX_INFO(("BXSHARE is set to '%s'", getenv("BXSHARE")));
@@ -869,18 +876,15 @@ int bx_init_main(int argc, char *argv[])
   // we don't have getenv or setenv.  Do nothing.
 #endif
 
-  // initialize plugin system. This must happen before we attempt to
-  // load any modules.
-  plugin_startup();
-
   int norcfile = 1;
 
   if (SIM->get_param_bool(BXPN_RESTORE_FLAG)->get()) {
     load_rcfile = 0;
     norcfile = 0;
+  } else {
+    // set up and load pre-defined optional plugins before parsing configuration
+    bx_plugin_ctrl_reset(0);
   }
-  // load pre-defined optional plugins before parsing configuration
-  SIM->opt_plugin_ctrl("*", 1);
   SIM->init_save_restore();
   SIM->init_statistics();
   if (load_rcfile) {
@@ -1017,19 +1021,12 @@ int bx_begin_simulation(int argc, char *argv[])
 
   bx_init_hardware();
 
-#if BX_LOAD32BITOSHACK
-  if (SIM->get_param_enum(BXPN_LOAD32BITOS_WHICH)->get()) {
-    void bx_load32bitOSimagehack(void);
-    bx_load32bitOSimagehack();
-  }
-#endif
-
   SIM->set_init_done(1);
 
   // update headerbar buttons since drive status can change during init
   bx_gui->update_drive_status_buttons();
 
-  // iniialize statusbar and set all items inactive
+  // initialize statusbar and set all items inactive
   if (!SIM->get_param_bool(BXPN_RESTORE_FLAG)->get()) {
     bx_gui->statusbar_setitem(-1, 0);
   } else {
@@ -1076,14 +1073,22 @@ int bx_begin_simulation(int argc, char *argv[])
 
       static int quantum = SIM->get_param_num(BXPN_SMP_QUANTUM)->get();
       Bit32u executed = 0, processor = 0;
+      bool run = true;
 
+      if (setjmp(BX_CPU_C::jmp_buf_env)) {
+        // can get here only from exception function or VMEXIT
+        BX_CPU(processor)->icount++;
+        run = false;
+      }
       while (1) {
          // do some instructions in each processor
-         Bit64u icount = BX_CPU(processor)->icount_last_sync = BX_CPU(processor)->get_icount();
-         BX_CPU(processor)->cpu_run_trace();
+        if (run)
+          BX_CPU(processor)->cpu_run_trace();
+        else
+          run = true;
 
          // see how many instruction it was able to run
-         Bit32u n = (Bit32u)(BX_CPU(processor)->get_icount() - icount);
+         Bit32u n = (Bit32u)(BX_CPU(processor)->get_icount() - BX_CPU(processor)->icount_last_sync);
          if (n == 0) n = quantum; // the CPU was halted
          executed += n;
 
@@ -1092,6 +1097,8 @@ int bx_begin_simulation(int argc, char *argv[])
            BX_TICKN(executed / BX_SMP_PROCESSORS);
            executed %= BX_SMP_PROCESSORS;
          }
+
+         BX_CPU(processor)->icount_last_sync = BX_CPU(processor)->get_icount();
 
          if (bx_pc_system.kill_bochs_request)
            break;
@@ -1158,6 +1165,7 @@ void bx_init_hardware()
   int i;
   char pname[16];
   bx_list_c *base;
+  char buffer[128];
 
   // all configuration has been read, now initialize everything.
 
@@ -1172,15 +1180,11 @@ void bx_init_hardware()
 
   // Output to the log file the cpu and device settings
   // This will by handy for bug reports
-  BX_INFO(("Bochs x86 Emulator %s", VER_STRING));
+  BX_INFO(("Bochs x86 Emulator %s", VERSION));
   BX_INFO(("  %s", REL_STRING));
-#ifdef __DATE__
-#ifdef __TIME__
-  BX_INFO(("Compiled on %s at %s", __DATE__, __TIME__));
-#else
-  BX_INFO(("Compiled on %s", __DATE__));
-#endif
-#endif
+  if (bx_get_timestamp(buffer) > 0) {
+    BX_INFO(("  %s", buffer));
+  }
   BX_INFO(("System configuration"));
   BX_INFO(("  processors: %d (cores=%u, HT threads=%u)", BX_SMP_PROCESSORS,
     SIM->get_param_num(BXPN_CPU_NCORES)->get(), SIM->get_param_num(BXPN_CPU_NTHREADS)->get()));
@@ -1267,7 +1271,7 @@ void bx_init_hardware()
   BX_INFO(("  Fast function calls: %s", BX_FAST_FUNC_CALL?"yes":"no"));
   BX_INFO(("  Handlers Chaining speedups: %s", BX_SUPPORT_HANDLERS_CHAINING_SPEEDUPS?"yes":"no"));
   BX_INFO(("Devices configuration"));
-  BX_INFO(("  PCI support: %s", BX_SUPPORT_PCI?"i440FX i430FX":"no"));
+  BX_INFO(("  PCI support: %s", BX_SUPPORT_PCI?"i440FX i430FX i440BX":"no"));
 #if BX_SUPPORT_NE2K || BX_SUPPORT_E1000
   BX_INFO(("  Networking support:%s%s",
            BX_SUPPORT_NE2K?" NE2000":"", BX_SUPPORT_E1000?" E1000":""));
@@ -1289,6 +1293,7 @@ void bx_init_hardware()
 #endif
   BX_INFO(("  VGA extension support: vbe%s%s",
            BX_SUPPORT_CLGD54XX?" cirrus":"", BX_SUPPORT_VOODOO?" voodoo":""));
+  bx_hdimage_ctl.list_modules();
 
   // Check if there is a romimage
   if (SIM->get_param_string(BXPN_ROM_PATH)->isempty()) {

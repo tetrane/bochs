@@ -1,5 +1,5 @@
 /////////////////////////////////////////////////////////////////////////
-// $Id: eth_tuntap.cc 13257 2017-06-16 08:27:55Z vruppert $
+// $Id: eth_tuntap.cc 13840 2020-05-06 11:17:34Z vruppert $
 /////////////////////////////////////////////////////////////////////////
 //
 //  Copyright (C) 2001-2017  The Bochs Project
@@ -176,7 +176,7 @@ bx_tuntap_pktmover_c::bx_tuntap_pktmover_c(const char *netif,
 
   fd = open (filename, O_RDWR);
 #endif
-  char intname[IFNAMSIZ];
+  char intname[MAXPATHLEN];
   strcpy(intname,netif);
   fd=tun_alloc(intname);
   if (fd < 0) {

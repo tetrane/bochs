@@ -1,8 +1,8 @@
 /////////////////////////////////////////////////////////////////////////
-// $Id: x.cc 13075 2017-02-18 11:13:56Z vruppert $
+// $Id: x.cc 14027 2020-12-16 12:24:35Z vruppert $
 /////////////////////////////////////////////////////////////////////////
 //
-//  Copyright (C) 2001-2017  The Bochs Project
+//  Copyright (C) 2001-2020  The Bochs Project
 //
 //  This library is free software; you can redistribute it and/or
 //  modify it under the terms of the GNU Lesser General Public
@@ -39,7 +39,9 @@ extern "C" {
 #include <X11/Xos.h>
 #include <X11/Xatom.h>
 #include <X11/keysym.h>
+#if BX_HAVE_XRANDR_H
 #include <X11/extensions/Xrandr.h>
+#endif
 #if BX_HAVE_XPM_H
 #include <X11/xpm.h>
 #endif
@@ -53,14 +55,22 @@ extern "C" {
 
 #include "font/vga.bitmap.h"
 
+#define COMMAND_MODE_KEYSYM XK_F7
+
 class bx_x_gui_c : public bx_gui_c {
 public:
   bx_x_gui_c(void);
   DECLARE_GUI_VIRTUAL_METHODS()
   DECLARE_GUI_NEW_VIRTUAL_METHODS()
+  virtual void set_font(bx_bool lg);
+  virtual void draw_char(Bit8u ch, Bit8u fc, Bit8u bc, Bit16u xc, Bit16u yc,
+                         Bit8u fw, Bit8u fh, Bit8u fx, Bit8u fy,
+                         bx_bool gfxcharw9, Bit8u cs, Bit8u ce, bx_bool curs);
   virtual void beep_on(float frequency);
   virtual void beep_off();
+#if BX_HAVE_XRANDR_H
   virtual void get_capabilities(Bit16u *xres, Bit16u *yres, Bit16u *bpp);
+#endif
   virtual void set_display_mode(disp_mode_t newmode);
   virtual void set_mouse_mode_absxy(bx_bool mode);
 #if BX_SHOW_IPS
@@ -97,12 +107,7 @@ static unsigned long white_pixel=0, black_pixel=0;
 static char *progname; /* name this program was invoked by */
 
 // text display
-static unsigned int text_rows=25, text_cols=80;
 static unsigned font_width, font_height;
-static Bit8u h_panning = 0, v_panning = 0;
-static Bit16u line_compare = 1023;
-static unsigned prev_cursor_x=0;
-static unsigned prev_cursor_y=0;
 
 // graphics display
 static Window win;
@@ -157,12 +162,14 @@ static unsigned bx_statusitem_pos[12] = {
   0, 200, 240, 280, 320, 360, 400, 440, 480, 520, 560, 600
 };
 static bx_bool bx_statusitem_active[12];
-static long bx_status_led_green, bx_status_led_red, bx_status_graytext;
+static long bx_status_leds[3];
+static long bx_status_graytext;
 static char bx_status_info_text[34];
 #if BX_SHOW_IPS
 static bx_bool x11_ips_update = 0, x11_hide_ips = 0;
 static char x11_ips_text[20];
-static Bit8u x11_mouse_msg_counter = 0;
+static Bit8u x11_show_info_msg = 0;
+static Bit8u x11_info_msg_counter = 0;
 #endif
 
 Bit32u ascii_to_key_event[0x5f] = {
@@ -376,7 +383,8 @@ static int X11_KeyRepeat(Display *display, XEvent *event)
   return repeated;
 }
 
-void x11_set_status_text(int element, const char *text, bx_bool active, bx_bool w=0)
+void x11_set_status_text(int element, const char *text, bx_bool active,
+                         Bit8u color=0)
 {
   int xleft, xsize, sb_ypos;
 
@@ -389,15 +397,23 @@ void x11_set_status_text(int element, const char *text, bx_bool active, bx_bool 
     }
     XFillRectangle(bx_x_display, win, gc_headerbar_inv, xleft, sb_ypos+2, xsize,
                    bx_statusbar_y-2);
-    XDrawString(bx_x_display, win, gc_headerbar, xleft, sb_ypos+bx_statusbar_y-2,
-                text, strlen(text));
+    if (strlen(text) > 0) {
+      XDrawString(bx_x_display, win, gc_headerbar, xleft, sb_ypos+bx_statusbar_y-2,
+                  text, strlen(text));
+    }
+#if BX_SHOW_IPS
+    if (!active) {
+      if (color == 0) { // volatile info text for 3 seconds
+        x11_info_msg_counter = 3;
+      } else {
+        x11_show_info_msg = (strlen(text) > 0);
+      }
+    }
+#endif
   } else if (element <= BX_MAX_STATUSITEMS) {
     bx_statusitem_active[element] = active;
     if (active) {
-      if (w)
-        XSetForeground(bx_x_display, gc_headerbar, bx_status_led_red);
-      else
-        XSetForeground(bx_x_display, gc_headerbar, bx_status_led_green);
+      XSetForeground(bx_x_display, gc_headerbar, bx_status_leds[color]);
       XFillRectangle(bx_x_display, win, gc_headerbar, xleft, sb_ypos+2, xsize-1, bx_statusbar_y-2);
       XSetForeground(bx_x_display, gc_headerbar, black_pixel);
     } else {
@@ -602,6 +618,8 @@ void bx_x_gui_c::specific_init(int argc, char **argv, unsigned headerbar_y)
         BX_INFO(("hide IPS display in status bar"));
         x11_hide_ips = 1;
 #endif
+      } else if (!strcmp(argv[i], "cmdmode")) {
+        command_mode.present = 1;
       } else {
         BX_PANIC(("Unknown x11 option '%s'", argv[i]));
       }
@@ -639,8 +657,8 @@ void bx_x_gui_c::specific_init(int argc, char **argv, unsigned headerbar_y)
   font_width = 8;
   font_height = 16;
 
-  dimension_x = text_cols * font_width;
-  dimension_y = text_rows * font_height;
+  dimension_x = guest_xres;
+  dimension_y = guest_yres;
 
   /* create opaque window */
   win = XCreateSimpleWindow(bx_x_display, RootWindow(bx_x_display,bx_x_screen_num),
@@ -847,18 +865,22 @@ void bx_x_gui_c::specific_init(int argc, char **argv, unsigned headerbar_y)
   for (i=0; i<12; i++) bx_statusitem_active[i] = 0;
   switch (imBPP) {
     case 16:
-      bx_status_led_green = 0x07e0;
-      bx_status_led_red = 0xf900;
+      bx_status_leds[0] = 0x07e0;
+      bx_status_leds[1] = 0xf900;
+      bx_status_leds[2] = 0xffe0;
       bx_status_graytext = 0x8410;
       break;
     case 24:
     case 32:
-      bx_status_led_green = 0x00ff00;
-      bx_status_led_red = 0xff4000;
+      bx_status_leds[0] = 0x00ff00;
+      bx_status_leds[1] = 0xff4000;
+      bx_status_leds[2] = 0xffff00;
       bx_status_graytext = 0x808080;
       break;
     default:
-      bx_status_led_green = 0;
+      bx_status_leds[0] = 0;
+      bx_status_leds[1] = 0;
+      bx_status_leds[2] = 0;
       bx_status_graytext = 0;
   }
   sprintf(bx_status_info_text, "%s enables mouse", get_toggle_info());
@@ -895,6 +917,7 @@ void bx_x_gui_c::specific_init(int argc, char **argv, unsigned headerbar_y)
 #endif
 
   new_gfx_api = 1;
+  new_text_api = 1;
   dialog_caps |= (BX_GUI_DLG_USER | BX_GUI_DLG_SNAPSHOT | BX_GUI_DLG_CDROM);
   console.present = 1;
 }
@@ -1110,256 +1133,102 @@ void bx_x_gui_c::handle_events(void)
     send_mouse_status();
   }
 #if BX_SHOW_IPS
-  if (x11_ips_update) {
+  if (x11_ips_update && !x11_show_info_msg) {
     x11_ips_update = 0;
     x11_set_status_text(0, x11_ips_text, 1);
   }
 #endif
 }
 
+void bx_x_gui_c::set_font(bx_bool lg)
+{
+  unsigned i, j, k;
+  Bit8u fbits, fmask, frow;
+  unsigned char cell[96];
+  bx_bool gfxchar, dwidth;
+
+  BX_INFO(("charmap update. Font is %d x %d", font_width, font_height));
+  for (unsigned c = 0; c<256; c++) {
+    if (char_changed[c]) {
+      XFreePixmap(bx_x_display, vgafont[c]);
+      gfxchar = lg && ((c & 0xE0) == 0xC0);
+      dwidth = font_width > 9;
+      i = 0;
+      j = 0;
+      memset(cell, 0, sizeof(cell));
+      if (dwidth) {
+        do {
+          frow = vga_charmap[(c<<5)+j];
+          fmask = 0x80;
+          fbits = 0x03;
+          for (k=0; k<8; k++) {
+            if (frow & fmask) cell[i] |= fbits;
+            fmask >>= 1;
+            fbits <<= 2;
+            if (k == 3) {
+              i++;
+              fbits = 0x03;
+            }
+          }
+          if (gfxchar) {
+            if (frow & 0x01) cell[i+1] = 0x03;
+          }
+          i += 2;
+        } while (++j < font_height);
+        vgafont[c] = XCreateBitmapFromData(bx_x_display, win,
+                         (const char*)cell, 18, font_height);
+      } else {
+        do {
+          frow = vga_charmap[(c<<5)+j];
+          fmask = 0x80;
+          fbits = 0x01;
+          for (k=0; k<8; k++) {
+            if (frow & fmask) cell[i] |= fbits;
+            fmask >>= 1;
+            fbits <<= 1;
+          }
+          if (gfxchar) {
+            if (frow & 0x01) cell[i+1] = 0x01;
+          }
+          i += 2;
+        } while (++j < font_height);
+        vgafont[c] = XCreateBitmapFromData(bx_x_display, win,
+                         (const char*)cell, 9, font_height);
+      }
+      if(vgafont[c] == None)
+        BX_PANIC(("Can't create vga font [%d]", c));
+      char_changed[c] = 0;
+    }
+  }
+}
+
+void bx_x_gui_c::draw_char(Bit8u ch, Bit8u fc, Bit8u bc, Bit16u xc, Bit16u yc,
+                           Bit8u fw, Bit8u fh, Bit8u fx, Bit8u fy,
+                           bx_bool gfxcharw9, Bit8u cs, Bit8u ce, bx_bool curs)
+{
+  yc += bx_headerbar_y;
+  XSetForeground(bx_x_display, gc, col_vals[fc]);
+  XSetBackground(bx_x_display, gc, col_vals[bc]);
+  XCopyPlane(bx_x_display, vgafont[ch], win, gc, fx, fy, fw, fh, xc, yc, 1);
+  if (curs && (ce >= fy) && (cs < (fh + fy))) {
+    if (cs > fy) {
+      yc += (cs - fy);
+      fh -= (cs - fy);
+    }
+    if ((ce - cs + 1) < fh) {
+      fh = ce - cs + 1;
+    }
+    XSetForeground(bx_x_display, gc, col_vals[bc]);
+    XSetBackground(bx_x_display, gc, col_vals[fc]);
+    XCopyPlane(bx_x_display, vgafont[ch], win, gc, fx, cs, fw, fh, xc, yc, 1);
+  }
+}
+
 void bx_x_gui_c::text_update(Bit8u *old_text, Bit8u *new_text,
                       unsigned long cursor_x, unsigned long cursor_y,
                       bx_vga_tminfo_t *tm_info)
 {
-  Bit8u *old_line, *new_line, *text_base;
-  Bit8u cChar, fbits, fmask, frow;
-  unsigned int curs, hchars, i, j, k, offset, rows, x, y, xc, yc, yc2, cs_y;
-  unsigned new_foreground, new_background;
-  Bit8u cfwidth, cfheight, cfheight2, font_col, font_row, font_row2;
-  Bit8u split_textrow, split_fontrows;
-  bx_bool forceUpdate = 0, split_screen;
-  bx_bool blink_state, blink_mode;
-  unsigned char cell[96];
-  unsigned long text_palette[16];
-
-  blink_mode = (tm_info->blink_flags & BX_TEXT_BLINK_MODE) > 0;
-  blink_state = (tm_info->blink_flags & BX_TEXT_BLINK_STATE) > 0;
-  if (blink_mode) {
-    if (tm_info->blink_flags & BX_TEXT_BLINK_TOGGLE)
-      forceUpdate = 1;
-  }
-  if (charmap_updated) {
-    BX_INFO(("charmap update. Font is %d x %d", font_width, font_height));
-    for (unsigned c = 0; c<256; c++) {
-      if (char_changed[c]) {
-        XFreePixmap(bx_x_display, vgafont[c]);
-        bx_bool gfxchar = tm_info->line_graphics && ((c & 0xE0) == 0xC0);
-        bx_bool dwidth = font_width > 9;
-        i = 0;
-        j = 0;
-        memset(cell, 0, sizeof(cell));
-        if (dwidth) {
-          do {
-            frow = vga_charmap[(c<<5)+j];
-            fmask = 0x80;
-            fbits = 0x03;
-            for (k=0; k<8; k++) {
-              if (frow & fmask) cell[i] |= fbits;
-              fmask >>= 1;
-              fbits <<= 2;
-              if (k == 3) {
-                i++;
-                fbits = 0x03;
-              }
-            }
-            if (gfxchar) {
-              if (frow & 0x01) cell[i+1] = 0x03;
-            }
-            i += 2;
-          } while (++j < font_height);
-          vgafont[c] = XCreateBitmapFromData(bx_x_display, win,
-                         (const char*)cell, 18, font_height);
-        } else {
-          do {
-            frow = vga_charmap[(c<<5)+j];
-            fmask = 0x80;
-            fbits = 0x01;
-            for (k=0; k<8; k++) {
-              if (frow & fmask) cell[i] |= fbits;
-              fmask >>= 1;
-              fbits <<= 1;
-            }
-            if (gfxchar) {
-              if (frow & 0x01) cell[i+1] = 0x01;
-            }
-            i += 2;
-          } while (++j < font_height);
-          vgafont[c] = XCreateBitmapFromData(bx_x_display, win,
-                         (const char*)cell, 9, font_height);
-        }
-        if(vgafont[c] == None)
-          BX_PANIC(("Can't create vga font [%d]", c));
-        char_changed[c] = 0;
-      }
-    }
-    forceUpdate = 1;
-    charmap_updated = 0;
-  }
-  for (i=0; i<16; i++) {
-    text_palette[i] = col_vals[tm_info->actl_palette[i]];
-  }
-
-  if((tm_info->h_panning != h_panning) || (tm_info->v_panning != v_panning)) {
-    forceUpdate = 1;
-    h_panning = tm_info->h_panning;
-    v_panning = tm_info->v_panning;
-  }
-  if(tm_info->line_compare != line_compare) {
-    forceUpdate = 1;
-    line_compare = tm_info->line_compare;
-  }
-
-  // first invalidate character at previous and new cursor location
-  if ((prev_cursor_y < text_rows) && (prev_cursor_x < text_cols)) {
-    curs = prev_cursor_y * tm_info->line_offset + prev_cursor_x * 2;
-    old_text[curs] = ~new_text[curs];
-  }
-  if((tm_info->cs_start <= tm_info->cs_end) && (tm_info->cs_start < font_height) &&
-     (cursor_y < text_rows) && (cursor_x < text_cols)) {
-    curs = cursor_y * tm_info->line_offset + cursor_x * 2;
-    old_text[curs] = ~new_text[curs];
-  } else {
-    curs = 0xffff;
-  }
-
-  rows = text_rows;
-  if (v_panning) rows++;
-  y = 0;
-  cs_y = 0;
-  text_base = new_text - tm_info->start_address;
-  if (line_compare < dimension_y) {
-    split_textrow = (line_compare + v_panning) / font_height;
-    split_fontrows = ((line_compare + v_panning) % font_height) + 1;
-  } else {
-    split_textrow = rows + 1;
-    split_fontrows = 0;
-  }
-  split_screen = 0;
-  do {
-    hchars = text_cols;
-    if (h_panning) hchars++;
-    if (split_screen) {
-      yc = bx_headerbar_y + line_compare + cs_y * font_height + 1;
-      font_row = 0;
-      if (rows == 1) {
-        cfheight = (dimension_y - line_compare - 1) % font_height;
-        if (cfheight == 0) cfheight = font_height;
-      } else {
-        cfheight = font_height;
-      }
-    } else if (v_panning) {
-      if (y == 0) {
-        yc = bx_headerbar_y;
-        font_row = v_panning;
-        cfheight = font_height - v_panning;
-      } else {
-        yc = y * font_height + bx_headerbar_y - v_panning;
-        font_row = 0;
-        if (rows == 1) {
-          cfheight = v_panning;
-        } else {
-          cfheight = font_height;
-        }
-      }
-    } else {
-      yc = y * font_height + bx_headerbar_y;
-      font_row = 0;
-      cfheight = font_height;
-    }
-    if (!split_screen && (y == split_textrow)) {
-      if (split_fontrows < cfheight) cfheight = split_fontrows;
-    }
-    new_line = new_text;
-    old_line = old_text;
-    x = 0;
-    offset = cs_y * tm_info->line_offset;
-    do {
-      if (h_panning) {
-        if (hchars > text_cols) {
-          xc = 0;
-          font_col = h_panning;
-          cfwidth = font_width - h_panning;
-        } else {
-          xc = x * font_width - h_panning;
-          font_col = 0;
-          if (hchars == 1) {
-            cfwidth = h_panning;
-          } else {
-            cfwidth = font_width;
-          }
-        }
-      } else {
-        xc = x * font_width;
-        font_col = 0;
-        cfwidth = font_width;
-      }
-      if (forceUpdate || (old_text[0] != new_text[0])
-          || (old_text[1] != new_text[1])) {
-
-        cChar = new_text[0];
-        new_foreground = new_text[1] & 0x0f;
-        if (blink_mode) {
-          new_background = (new_text[1] & 0x70) >> 4;
-          if (!blink_state && (new_text[1] & 0x80))
-            new_foreground = new_background;
-        } else {
-          new_background = (new_text[1] & 0xf0) >> 4;
-        }
-        XSetForeground(bx_x_display, gc, text_palette[new_foreground]);
-        XSetBackground(bx_x_display, gc, text_palette[new_background]);
-
-        XCopyPlane(bx_x_display, vgafont[cChar], win, gc, font_col, font_row, cfwidth, cfheight,
-                   xc, yc, 1);
-        if (offset == curs) {
-          XSetForeground(bx_x_display, gc, text_palette[new_background]);
-          XSetBackground(bx_x_display, gc, text_palette[new_foreground]);
-          if (font_row == 0) {
-            yc2 = yc + tm_info->cs_start;
-            font_row2 = tm_info->cs_start;
-            cfheight2 = tm_info->cs_end - tm_info->cs_start + 1;
-            if ((yc2 + cfheight2) > (dimension_y + bx_headerbar_y)) {
-              cfheight2 = dimension_y + bx_headerbar_y - yc2;
-            }
-          } else {
-            if (v_panning > tm_info->cs_start) {
-              yc2 = yc;
-              font_row2 = font_row;
-              cfheight2 = tm_info->cs_end - v_panning + 1;
-            } else {
-              yc2 = yc + tm_info->cs_start - v_panning;
-              font_row2 = tm_info->cs_start;
-              cfheight2 = tm_info->cs_end - tm_info->cs_start + 1;
-            }
-          }
-          if (yc2 < (dimension_y + bx_headerbar_y)) {
-            XCopyPlane(bx_x_display, vgafont[cChar], win, gc, font_col, font_row2, cfwidth,
-                       cfheight2, xc, yc2, 1);
-          }
-        }
-      }
-      x++;
-      new_text+=2;
-      old_text+=2;
-      offset+=2;
-    } while (--hchars);
-    if (!split_screen && (y == split_textrow)) {
-      new_text = text_base;
-      forceUpdate = 1;
-      cs_y = 0;
-      if (tm_info->split_hpanning) h_panning = 0;
-      rows = ((dimension_y - line_compare + font_height - 2) / font_height) + 1;
-      split_screen = 1;
-    } else {
-      y++;
-      cs_y++;
-      new_text = new_line + tm_info->line_offset;
-      old_text = old_line + tm_info->line_offset;
-    }
-  } while (--rows);
-
-  h_panning = tm_info->h_panning;
-  prev_cursor_x = cursor_x;
-  prev_cursor_y = cursor_y;
+  // present for compatibility
 }
 
 void bx_x_gui_c::graphics_tile_update(Bit8u *tile, unsigned x0, unsigned y0)
@@ -1490,7 +1359,8 @@ void bx_x_gui_c::dimension_update(unsigned x, unsigned y, unsigned fheight, unsi
     BX_PANIC(("%d bpp graphics mode not supported", bpp));
   }
   guest_textmode = (fheight > 0);
-  guest_fsize = (fheight << 4) | fwidth;
+  guest_fwidth = fwidth;
+  guest_fheight = fheight;
   guest_xres = x;
   guest_yres = y;
   if (guest_textmode) {
@@ -1500,8 +1370,6 @@ void bx_x_gui_c::dimension_update(unsigned x, unsigned y, unsigned fheight, unsi
       charmap_updated = 1;
       for (int i = 0; i < 256; i++) char_changed[i] = 1;
     }
-    text_cols = x / font_width;
-    text_rows = y / font_height;
   }
   if ((x != dimension_x) || (y != dimension_y)) {
     XSizeHints hints;
@@ -1660,9 +1528,6 @@ void bx_x_gui_c::mouse_enabled_changed_specific(bx_bool val)
     enable_cursor();
     warp_cursor(mouse_enable_x-current_x, mouse_enable_y-current_y);
   }
-#if BX_SHOW_IPS
-  x11_mouse_msg_counter = 3;
-#endif
 }
 
 void bx_x_gui_c::exit(void)
@@ -1800,6 +1665,7 @@ void bx_x_gui_c::beep_off()
   BX_INFO(("X11 Beep OFF"));
 }
 
+#if BX_HAVE_XRANDR_H
 void bx_x_gui_c::get_capabilities(Bit16u *xres, Bit16u *yres, Bit16u *bpp)
 {
   int num_sizes;
@@ -1817,18 +1683,18 @@ void bx_x_gui_c::get_capabilities(Bit16u *xres, Bit16u *yres, Bit16u *bpp)
     XRRScreenConfiguration *conf = XRRGetScreenInfo(dpy, root);
     SizeID original_size_id = XRRConfigCurrentConfiguration(conf, &original_rotation);
     *xres = xrrs[original_size_id].width;
-    *yres = xrrs[original_size_id].height;
+    *yres = xrrs[original_size_id].height - bx_headerbar_y - bx_statusbar_y;
     free(conf);
-  }
-  else {
+  } else {
     int screen = DefaultScreen(dpy);
     *xres = DisplayWidth(dpy, screen);
-    *yres = DisplayHeight(dpy, screen);
-   }
+    *yres = DisplayHeight(dpy, screen) - bx_headerbar_y - bx_statusbar_y;
+  }
   XCloseDisplay(dpy);
   // always return 32 bit depth
   *bpp = 32;
 }
+#endif
 
 void bx_x_gui_c::set_display_mode(disp_mode_t newmode)
 {
@@ -1849,14 +1715,14 @@ void bx_x_gui_c::set_mouse_mode_absxy(bx_bool mode)
 #if BX_SHOW_IPS
 void bx_x_gui_c::show_ips(Bit32u ips_count)
 {
-  if (x11_mouse_msg_counter == 0) {
+  if (x11_info_msg_counter == 0) {
     if (!x11_ips_update && !x11_hide_ips) {
       ips_count /= 1000;
       sprintf(x11_ips_text, "IPS: %u.%3.3uM", ips_count / 1000, ips_count % 1000);
       x11_ips_update = 1;
     }
   } else {
-    x11_mouse_msg_counter--;
+    x11_info_msg_counter--;
   }
 }
 #endif
@@ -1874,7 +1740,11 @@ void bx_x_gui_c::sim_is_idle()
 
 void bx_x_gui_c::statusbar_setitem_specific(int element, bx_bool active, bx_bool w)
 {
-  x11_set_status_text(element+1, statusitem[element].text, active, w);
+  Bit8u color = 0;
+  if (w) {
+    color = (statusitem[element].auto_off) ? 1 : 2;
+  }
+  x11_set_status_text(element+1, statusitem[element].text, active, color);
 }
 
 // X11 gui: private methods
@@ -1923,7 +1793,18 @@ void bx_x_gui_c::send_mouse_status(void)
 void bx_x_gui_c::xkeypress(KeySym keysym, int press_release)
 {
   Bit32u key_event;
+  Bit8u kmodchange = 0;
   bx_bool mouse_toggle = 0;
+
+  if ((keysym == XK_Shift_L) || (keysym == XK_Shift_R)) {
+    kmodchange = set_modifier_keys(BX_MOD_KEY_SHIFT, !press_release);
+  } else if ((keysym == XK_Control_L) || (keysym == XK_Control_R)) {
+    kmodchange = set_modifier_keys(BX_MOD_KEY_CTRL, !press_release);
+  } else if (keysym == XK_Alt_L) {
+    kmodchange = set_modifier_keys(BX_MOD_KEY_ALT, !press_release);
+  } else if (keysym == XK_Caps_Lock) {
+    kmodchange = set_modifier_keys(BX_MOD_KEY_CAPS, !press_release);
+  }
 
   if (console_running() && !press_release) {
     if (((keysym >= XK_space) && (keysym <= XK_asciitilde)) ||
@@ -1932,18 +1813,61 @@ void bx_x_gui_c::xkeypress(KeySym keysym, int press_release)
     }
     return;
   }
-  if ((keysym == XK_Control_L) || (keysym == XK_Control_R)) {
-     mouse_toggle = mouse_toggle_check(BX_MT_KEY_CTRL, !press_release);
-  } else if (keysym == XK_Alt_L) {
-     mouse_toggle = mouse_toggle_check(BX_MT_KEY_ALT, !press_release);
+
+  if ((kmodchange & BX_MOD_KEY_CTRL) > 0) {
+    mouse_toggle = mouse_toggle_check(BX_MT_KEY_CTRL, !press_release);
+  } else if ((kmodchange & BX_MOD_KEY_ALT) > 0) {
+    mouse_toggle = mouse_toggle_check(BX_MT_KEY_ALT, !press_release);
   } else if (keysym == XK_F10) {
-     mouse_toggle = mouse_toggle_check(BX_MT_KEY_F10, !press_release);
+    mouse_toggle = mouse_toggle_check(BX_MT_KEY_F10, !press_release);
   } else if (keysym == XK_F12) {
-     mouse_toggle = bx_gui->mouse_toggle_check(BX_MT_KEY_F12, !press_release);
+    mouse_toggle = bx_gui->mouse_toggle_check(BX_MT_KEY_F12, !press_release);
   }
   if (mouse_toggle) {
     toggle_mouse_enable();
     return;
+  }
+
+  if (!press_release) {
+    if (bx_gui->command_mode_active()) {
+      if (keysym == XK_a) {
+        bx_gui->floppyA_handler();
+      } else if (keysym == XK_b) {
+        bx_gui->floppyB_handler();
+      } else if (keysym == XK_c) {
+        bx_gui->copy_handler();
+      } else if (keysym == XK_C) {
+        bx_gui->config_handler();
+      } else if (keysym == XK_m) {
+        bx_gui->marklog_handler();
+      } else if (keysym == XK_p) {
+        bx_gui->paste_handler();
+      } else if (keysym == XK_P) {
+        bx_gui->power_handler();
+      } else if (keysym == XK_r) {
+        bx_gui->reset_handler();
+      } else if (keysym == XK_s) {
+        bx_gui->snapshot_handler();
+      } else if (keysym == XK_S) {
+        bx_gui->save_restore_handler();
+      } else if (keysym == XK_u) {
+        bx_gui->userbutton_handler();
+      }
+      if (kmodchange == 0) {
+        bx_gui->set_command_mode(0);
+        x11_set_status_text(0, "", 0, 1);
+      }
+      if (keysym != COMMAND_MODE_KEYSYM) {
+        return;
+      }
+    } else {
+      if ((bx_gui->has_command_mode()) && (bx_gui->get_modifier_keys() == 0) &&
+          (keysym == COMMAND_MODE_KEYSYM)) {
+        bx_gui->set_command_mode(1);
+        x11_set_status_text(0, "Command mode", 0, 1);
+        return;
+      }
+    }
   }
 
   /* Old (no mapping) behavior */
@@ -2737,11 +2661,20 @@ BxEvent *x11_notify_callback(void *unused, BxEvent *event)
   bx_param_string_c *sparam;
   bx_param_enum_c *eparam;
   bx_list_c *list;
+  x11_button_t buttons;
 
   switch (event->type)
   {
     case BX_SYNC_EVT_LOG_DLG:
       event->retcode = x11_ask_dialog(event);
+      return event;
+    case BX_SYNC_EVT_MSG_BOX:
+      buttons.count = 1;
+      buttons.def_id = 0;
+      buttons.ok_id = 0;
+      buttons.btn[0].label = "OK";
+      buttons.btn[0].code = 0;
+      x11_message_box(event->u.logmsg.prefix, event->u.logmsg.msg, &buttons);
       return event;
     case BX_SYNC_EVT_ASK_PARAM:
       param = event->u.param.param;

@@ -1,8 +1,8 @@
 /////////////////////////////////////////////////////////////////////////
-// $Id: rombios.h 11545 2012-11-11 08:11:17Z vruppert $
+// $Id: rombios.h 13788 2020-01-15 17:06:10Z vruppert $
 /////////////////////////////////////////////////////////////////////////
 //
-//  Copyright (C) 2006 Volker Ruppert
+//  Copyright (C) 2006-2020  The Bochs Project
 //
 //  This library is free software; you can redistribute it and/or
 //  modify it under the terms of the GNU Lesser General Public
@@ -79,7 +79,8 @@
 #  define BX_APPNAME "QEMU"
 #  define BX_APPVENDOR "QEMU"
 #else
-#  define BX_APPNAME "Bochs"
+#  include "../bxversion.h"
+#  define BX_APPNAME "Bochs "VERSION
 #  define BX_APPVENDOR "The Bochs Project"
 #endif
 
@@ -173,6 +174,11 @@
 #define CPUID_APIC (1 << 9)
 #define CPUID_MTRR (1 << 12)
 
+#define CPUID_EXT_VMX (1 << 5)
+#define MSR_FEATURE_CTRL 0x03a
+#define FEATURE_CTRL_LOCK 0x1
+#define FEATURE_CTRL_VMX  0x4
+
 #define APIC_BASE    ((uint8_t *)0xfee00000)
 #define APIC_ICR_LOW 0x300
 #define APIC_SVR     0x0F0
@@ -235,6 +241,7 @@
 #define  PCI_COMMAND_IO		0x1	/* Enable response in I/O space */
 #define  PCI_COMMAND_MEMORY	0x2	/* Enable response in Memory space */
 #define PCI_CLASS_DEVICE        0x0a    /* Device class */
+#define PCI_HEADER_TYPE         0x0e    /* Header type */
 #define PCI_INTERRUPT_LINE	0x3c	/* 8 bits */
 #define PCI_INTERRUPT_PIN	0x3d	/* 8 bits */
 #define PCI_MIN_GNT		0x3e	/* 8 bits */
@@ -248,6 +255,8 @@
 #define PCI_VENDOR_ID_INTEL             0x8086
 #define PCI_DEVICE_ID_INTEL_82437       0x0122
 #define PCI_DEVICE_ID_INTEL_82441       0x1237
+#define PCI_DEVICE_ID_INTEL_82443       0x7190
+#define PCI_DEVICE_ID_INTEL_82443_1     0x7191
 #define PCI_DEVICE_ID_INTEL_82371FB_0   0x122e
 #define PCI_DEVICE_ID_INTEL_82371FB_1   0x1230
 #define PCI_DEVICE_ID_INTEL_82371SB_0   0x7000

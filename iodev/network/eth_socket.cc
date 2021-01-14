@@ -1,9 +1,10 @@
 /////////////////////////////////////////////////////////////////////////
-// $Id: eth_socket.cc 13261 2017-06-28 15:34:34Z vruppert $
+// $Id: eth_socket.cc 13812 2020-02-17 20:49:10Z vruppert $
 /////////////////////////////////////////////////////////////////////////
 //
-//  Copyright (C) 2003  by Mariusz Matuszek [NOmrmmSPAM @ users.sourceforge.net]
-//  Copyright (C) 2017  The Bochs Project
+//  Copyright (C) 2003       by Mariusz Matuszek
+//                              [NOmrmmSPAM @ users.sourceforge.net]
+//  Copyright (C) 2017-2020  The Bochs Project
 //
 //  This library is free software; you can redistribute it and/or
 //  modify it under the terms of the GNU Lesser General Public
@@ -30,7 +31,7 @@
 //
 // the idea is to provide a software multiport 'ethernet hub' and allow
 // communication between multiple bochs instances on the same machine
-// entirely in userspace and without need for root priviledges.
+// entirely in userspace and without need for root privileges.
 //
 // The config line in .bochsrc should look like:
 //
@@ -95,7 +96,9 @@ extern "C" {
 #include <netinet/in.h>
 #include <net/ethernet.h>
 #include <net/if.h>
+#ifdef __linux__
 #include <linux/types.h>
+#endif
 #include <netdb.h>
 #define closesocket(s) close(s)
 typedef int SOCKET;
@@ -104,6 +107,10 @@ typedef int SOCKET;
 #endif
 #endif
 };
+
+#ifdef __APPLE__
+#define MSG_NOSIGNAL 0
+#endif
 
 #ifdef WIN32
 #define MSG_NOSIGNAL 0
@@ -225,7 +232,7 @@ bx_socket_pktmover_c::bx_socket_pktmover_c(const char *netif,
 #ifndef WIN32
     this->fd = INVALID_SOCKET;
     if (errno == EACCES)
-      BX_PANIC(("eth_socket: insufficient priviledges to open socket"));
+      BX_PANIC(("eth_socket: insufficient privileges to open socket"));
     else
       BX_PANIC(("eth_socket: could not open socket: %s", strerror(errno)));
 #else

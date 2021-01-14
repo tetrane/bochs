@@ -1,8 +1,8 @@
 /////////////////////////////////////////////////////////////////////////
-// $Id: pit.h 13188 2017-04-15 20:31:07Z vruppert $
+// $Id: pit.h 13508 2018-05-14 18:17:04Z vruppert $
 /////////////////////////////////////////////////////////////////////////
 //
-//  Copyright (C) 2001-2017  The Bochs Project
+//  Copyright (C) 2001-2018  The Bochs Project
 //
 //  This library is free software; you can redistribute it and/or
 //  modify it under the terms of the GNU Lesser General Public
@@ -59,6 +59,7 @@ private:
     pit_82C54 timer;
     bx_bool speaker_data_on;
     bx_bool speaker_active;
+    bx_bool speaker_level;
     Bit64u  last_usec;
     Bit32u  last_next_event_time;
     Bit64u  total_ticks;
@@ -74,6 +75,7 @@ private:
   BX_PIT_SMF bx_bool periodic(Bit32u usec_delta);
 
   BX_PIT_SMF void  irq_handler(bx_bool value);
+  BX_PIT_SMF void  speaker_handler(bx_bool value);
 
   BX_PIT_SMF Bit16u get_timer(int Timer);
   BX_PIT_SMF Bit16u new_timer_count(int Timer);

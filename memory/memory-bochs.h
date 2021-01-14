@@ -1,8 +1,8 @@
 /////////////////////////////////////////////////////////////////////////
-// $Id: memory-bochs.h 13071 2017-02-14 20:11:58Z vruppert $
+// $Id: memory-bochs.h 14056 2021-01-02 14:04:35Z sshwarts $
 /////////////////////////////////////////////////////////////////////////
 //
-//  Copyright (C) 2001-2017  The Bochs Project
+//  Copyright (C) 2001-2020  The Bochs Project
 //
 //  I/O memory handlers API Copyright (C) 2003 by Frank Cornelis
 //
@@ -43,6 +43,10 @@ class BX_CPU_C;
 #define EXROM_MASK (EXROMSIZE-1)
 
 #define BIOS_MAP_LAST128K(addr) (((addr) | 0xfff00000) & BIOS_MASK)
+
+#define BIOS_ROM_LOWER    0x01
+#define BIOS_ROM_EXTENDED 0x02
+#define BIOS_ROM_1MEG     0x04
 
 enum memory_area_t {
   BX_MEM_AREA_C0000 = 0,
@@ -96,6 +100,11 @@ private:
   Bit8u   *bogus;    // 4k for unexisting memory
   bx_bool rom_present[65];
   bx_bool memory_type[13][2];
+  Bit32u  bios_rom_addr;
+  Bit8u   bios_rom_access;
+  Bit8u   flash_type;
+  Bit8u   flash_status;
+  Bit8u   flash_wsm_state;
 
   Bit32u used_blocks;
 #if BX_LARGE_RAMFILE
@@ -105,6 +114,8 @@ private:
 
   BX_MEM_SMF void   read_block(Bit32u block);
 #endif
+  BX_MEM_SMF Bit8u flash_read(Bit32u addr);
+  BX_MEM_SMF void  flash_write(Bit32u addr, Bit8u data);
 
 public:
   BX_MEM_C();
@@ -119,6 +130,7 @@ public:
   BX_MEM_SMF bx_bool is_smram_accessible(void);
 
   BX_MEM_SMF void    set_bios_write(bx_bool enabled);
+  BX_MEM_SMF void    set_bios_rom_access(Bit8u region, bx_bool enabled);
   BX_MEM_SMF void    set_memory_type(memory_area_t area, bx_bool rw, bx_bool dram);
 
   BX_MEM_SMF Bit8u*  getHostMemAddr(BX_CPU_C *cpu, bx_phy_address addr, unsigned rw);
@@ -135,11 +147,9 @@ public:
   BX_MEM_SMF void    load_ROM(const char *path, bx_phy_address romaddress, Bit8u type);
   BX_MEM_SMF void    load_RAM(const char *path, bx_phy_address romaddress);
 
-#if (BX_DEBUGGER || BX_DISASM || BX_GDBSTUB)
   BX_MEM_SMF bx_bool dbg_fetch_mem(BX_CPU_C *cpu, bx_phy_address addr, unsigned len, Bit8u *buf);
-#endif
 #if (BX_DEBUGGER || BX_GDBSTUB)
-  BX_MEM_SMF bx_bool dbg_set_mem(bx_phy_address addr, unsigned len, Bit8u *buf);
+  BX_MEM_SMF bx_bool dbg_set_mem(BX_CPU_C *cpu, bx_phy_address addr, unsigned len, Bit8u *buf);
   BX_MEM_SMF bx_bool dbg_crc32(bx_phy_address addr1, bx_phy_address addr2, Bit32u *crc);
 #endif
 
@@ -156,7 +166,7 @@ public:
 
   BX_MEM_SMF Bit64u  get_memory_len(void);
   BX_MEM_SMF void allocate_block(Bit32u index);
-  BX_MEM_SMF Bit8u* alloc_vector_aligned(Bit32u bytes, Bit32u alignment);
+  BX_MEM_SMF Bit8u* alloc_vector_aligned(Bit64u bytes, Bit64u alignment);
 
 #if BX_SUPPORT_MONITOR_MWAIT
   BX_MEM_SMF bx_bool is_monitor(bx_phy_address begin_addr, unsigned len);

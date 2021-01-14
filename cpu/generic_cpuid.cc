@@ -1,8 +1,8 @@
 /////////////////////////////////////////////////////////////////////////
-// $Id: generic_cpuid.cc 13185 2017-04-11 18:35:17Z sshwarts $
+// $Id: generic_cpuid.cc 14062 2021-01-02 16:28:51Z sshwarts $
 /////////////////////////////////////////////////////////////////////////
 //
-//   Copyright (c) 2011-2015 Stanislav Shwartsman
+//   Copyright (c) 2011-2017 Stanislav Shwartsman
 //          Written by Stanislav Shwartsman [sshwarts at sourceforge net]
 //
 //  This library is free software; you can redistribute it and/or
@@ -55,19 +55,16 @@ bx_generic_cpuid_t::bx_generic_cpuid_t(BX_CPU_C *cpu): bx_cpuid_t(cpu)
 
   // do not report CPUID functions above 0x3 if cpuid_limit_winnt is set
   // to workaround WinNT issue.
-  static bx_bool cpuid_limit_winnt = SIM->get_param_bool(BXPN_CPUID_LIMIT_WINNT)->get();
-  if (! cpuid_limit_winnt) {
-    if (BX_CPUID_SUPPORT_ISA_EXTENSION(BX_ISA_MONITOR_MWAIT))
-      max_std_leaf = 0x5;
-    if (BX_CPUID_SUPPORT_ISA_EXTENSION(BX_ISA_X2APIC))
-      max_std_leaf = 0xB;
-    if (BX_CPUID_SUPPORT_ISA_EXTENSION(BX_ISA_XSAVE))
-      max_std_leaf = 0xD;
-  }
+  if (BX_CPUID_SUPPORT_ISA_EXTENSION(BX_ISA_MONITOR_MWAIT))
+    max_std_leaf = 0x5;
+  if (BX_CPUID_SUPPORT_ISA_EXTENSION(BX_ISA_X2APIC))
+    max_std_leaf = 0xB;
+  if (BX_CPUID_SUPPORT_ISA_EXTENSION(BX_ISA_XSAVE))
+    max_std_leaf = 0xD;
 #endif
 
 #if BX_CPU_LEVEL <= 5
-  max_ext_leaf = 0;
+  max_ext_leaf = 0x0;
 #else
   max_ext_leaf = 0x80000008;
 
@@ -177,12 +174,7 @@ void bx_generic_cpuid_t::get_std_cpuid_leaf_0(cpuid_function_t *leaf) const
   // EBX: vendor ID string
   // EDX: vendor ID string
   // ECX: vendor ID string
-  unsigned max_leaf = max_std_leaf;
-  static bx_bool cpuid_limit_winnt = SIM->get_param_bool(BXPN_CPUID_LIMIT_WINNT)->get();
-  if (cpuid_limit_winnt)
-    max_leaf = 0x2;
-
-  get_leaf_0(max_leaf, (const char *) vendor_string, leaf);
+  get_leaf_0(max_std_leaf, (const char *) vendor_string, leaf);
 }
 
 // leaf 0x00000001 //
@@ -419,7 +411,7 @@ void bx_generic_cpuid_t::get_ext_cpuid_leaf_1(cpuid_function_t *leaf) const
 // leaf 0x80000005 //
 void bx_generic_cpuid_t::get_ext_cpuid_leaf_5(cpuid_function_t *leaf) const
 {
-  // CPUID function 0x800000005 - L1 Cache and TLB Identifiers
+  // CPUID function 0x80000005 - L1 Cache and TLB Identifiers
   leaf->eax = 0x01ff01ff;
   leaf->ebx = 0x01ff01ff;
   leaf->ecx = 0x40020140;
@@ -429,7 +421,7 @@ void bx_generic_cpuid_t::get_ext_cpuid_leaf_5(cpuid_function_t *leaf) const
 // leaf 0x80000006 //
 void bx_generic_cpuid_t::get_ext_cpuid_leaf_6(cpuid_function_t *leaf) const
 {
-  // CPUID function 0x800000006 - L2 Cache and TLB Identifiers
+  // CPUID function 0x80000006 - L2 Cache and TLB Identifiers
   leaf->eax = 0;
   leaf->ebx = 0x42004200;
   leaf->ecx = 0x02008140;
@@ -439,7 +431,7 @@ void bx_generic_cpuid_t::get_ext_cpuid_leaf_6(cpuid_function_t *leaf) const
 // leaf 0x80000007 //
 void bx_generic_cpuid_t::get_ext_cpuid_leaf_7(cpuid_function_t *leaf) const
 {
-  // CPUID function 0x800000007 - Advanced Power Management
+  // CPUID function 0x80000007 - Advanced Power Management
   leaf->eax = 0;
   leaf->ebx = 0;
   leaf->ecx = 0;
@@ -1213,7 +1205,9 @@ Bit32u bx_generic_cpuid_t::get_std_cpuid_features(void) const
     features |= BX_CPUID_STD_SELF_SNOOP;
 #endif
 
+#if BX_SUPPORT_SMP
   features |= BX_CPUID_STD_HT;
+#endif
 
   return features;
 }
@@ -1413,20 +1407,62 @@ Bit32u bx_generic_cpuid_t::get_ext4_cpuid_features(void) const
 {
   Bit32u features = 0;
 
-  //   [0:0]    PREFETCHWT1 instruction support
-  //   [1:1]    AVX512 VBMI instructions support
-  //   [2:2]    reserved
-  //   [3:3]    PKU: Protection keys for user-mode pages.
-  //   [4:4]    OSPKE: OS has set CR4.PKE to enable protection keys
-  //  [31:5]    reserved
+  //   [0:0] PREFETCHWT1 instruction support
+  //   [1:1] AVX512 VBMI instructions support
+  //   [2:2] UMIP: Supports user-mode instruction prevention
+  //   [3:3] PKU: Protection keys for user-mode pages.
+  //   [4:4] OSPKE: OS has set CR4.PKE to enable protection keys
+  //   [5:5] reserved
+  //   [6:6] AVX512 VBMI2 instructions support
+  //   [7:7] reserved
+  //   [8:8] GFNI instructions support
+  //   [9:9] VAES instructions support
+  // [10:10] VPCLMULQDQ instruction support
+  // [11:11] AVX512 VNNI instructions support
+  // [12:12] AVX512 BITALG instructions support
+  // [13:13] reserved
+  // [14:14] AVX512 VPOPCNTDQ: AVX512 VPOPCNTD/VPOPCNTQ instructions
+  // [15:15] reserved
+  // [16:16] LA57: LA57 and 5-level paging
+  // [21:17] reserved
+  // [22:22] RDPID: Read Processor ID support
+  // [29:23] reserved
+  // [30:30] SGX_LC: SGX Launch Configuration
+  // [31:31] reserved
   if (BX_CPUID_SUPPORT_ISA_EXTENSION(BX_ISA_AVX512_VBMI))
-    features |= BX_CPUID_EXT4_AVX512VBMI;
+    features |= BX_CPUID_EXT4_AVX512_VBMI;
 
+  if (BX_CPUID_SUPPORT_ISA_EXTENSION(BX_ISA_UMIP))
+    features |= BX_CPUID_EXT4_UMIP;
+
+  if (BX_CPUID_SUPPORT_ISA_EXTENSION(BX_ISA_AVX512_VBMI2))
+    features |= BX_CPUID_EXT4_AVX512_VBMI2;
+
+  if (BX_CPUID_SUPPORT_ISA_EXTENSION(BX_ISA_GFNI))
+    features |= BX_CPUID_EXT4_GFNI;
+
+  if (BX_CPUID_SUPPORT_ISA_EXTENSION(BX_ISA_VAES_VPCLMULQDQ))
+    features |= BX_CPUID_EXT4_VAES | BX_CPUID_EXT4_VPCLMULQDQ;
+
+  if (BX_CPUID_SUPPORT_ISA_EXTENSION(BX_ISA_AVX512_VNNI))
+    features |= BX_CPUID_EXT4_AVX512_VNNI;
+
+  if (BX_CPUID_SUPPORT_ISA_EXTENSION(BX_ISA_AVX512_BITALG))
+    features |= BX_CPUID_EXT4_AVX512_BITALG;
+
+  if (BX_CPUID_SUPPORT_ISA_EXTENSION(BX_ISA_AVX512_VPOPCNTDQ))
+    features |= BX_CPUID_EXT4_AVX512_VPOPCNTDQ;
+
+  if (BX_CPUID_SUPPORT_ISA_EXTENSION(BX_ISA_RDPID))
+    features |= BX_CPUID_EXT4_RDPID;
+
+#if BX_SUPPORT_PKEYS
   if (BX_CPUID_SUPPORT_ISA_EXTENSION(BX_ISA_PKU)) {
     features |= BX_CPUID_EXT4_PKU;
     if (cpu->cr4.get_PKE())
       features |= BX_CPUID_EXT4_OSPKE;
   }
+#endif
 
   return features;
 }

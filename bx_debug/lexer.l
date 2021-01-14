@@ -1,6 +1,6 @@
 %{
 /////////////////////////////////////////////////////////////////////////
-// $Id: lexer.l 13281 2017-08-22 21:03:58Z sshwarts $
+// $Id: lexer.l 14051 2021-01-02 12:12:02Z sshwarts $
 /////////////////////////////////////////////////////////////////////////
 
 #include <stdlib.h>
@@ -118,10 +118,11 @@ pending         { bxlval.sval = strdup(bxtext); return(BX_TOKEN_PENDING); }
 take            { bxlval.sval = strdup(bxtext); return(BX_TOKEN_TAKE); }
 dma             { bxlval.sval = strdup(bxtext); return(BX_TOKEN_DMA); }
 irq             { bxlval.sval = strdup(bxtext); return(BX_TOKEN_IRQ); }
+smi             { bxlval.sval = strdup(bxtext); return(BX_TOKEN_SMI); }
+nmi             { bxlval.sval = strdup(bxtext); return(BX_TOKEN_NMI); }
 tlb             { bxlval.sval = strdup(bxtext); return(BX_TOKEN_TLB); }
 u               |
 disasm          { BEGIN(DISASM); bxlval.sval = strdup(bxtext); return(BX_TOKEN_DISASM); }
-hex             { bxlval.sval = strdup(bxtext); return(BX_TOKEN_HEX); }
 instrument      { bxlval.sval = strdup(bxtext); return(BX_TOKEN_INSTRUMENT); }
 stop            { bxlval.sval = strdup(bxtext); return(BX_TOKEN_STOP); }
 doit            { bxlval.sval = strdup(bxtext); return(BX_TOKEN_DOIT); }
@@ -222,6 +223,7 @@ r15             { LONG_MODE_64B_REG(BX_64BIT_REG_R15); }
 ip              { return(BX_TOKEN_REG_IP); }
 eip             { return(BX_TOKEN_REG_EIP);}
 rip             { return(BX_TOKEN_REG_RIP);}
+ssp             { return(BX_TOKEN_REG_SSP);}
 cs              { bxlval.uval = BX_SEG_REG_CS; return(BX_TOKEN_CS); }
 es              { bxlval.uval = BX_SEG_REG_ES; return(BX_TOKEN_ES); }
 ss              { bxlval.uval = BX_SEG_REG_SS; return(BX_TOKEN_SS); }

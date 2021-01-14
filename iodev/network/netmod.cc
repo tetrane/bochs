@@ -1,8 +1,8 @@
 /////////////////////////////////////////////////////////////////////////
-// $Id: netmod.cc 13110 2017-03-12 20:26:42Z vruppert $
+// $Id: netmod.cc 14071 2021-01-08 19:04:41Z vruppert $
 /////////////////////////////////////////////////////////////////////////
 //
-//  Copyright (C) 2001-2017  The Bochs Project
+//  Copyright (C) 2001-2021  The Bochs Project
 //
 //  This library is free software; you can redistribute it and/or
 //  modify it under the terms of the GNU Lesser General Public
@@ -57,7 +57,7 @@ void* bx_netmod_ctl_c::init_module(bx_list_c *base, void *rxh, void *rxstat, bx_
   const char *modname = SIM->get_param_enum("ethmod", base)->get_selected();
   if (!eth_locator_c::module_present(modname)) {
 #if BX_PLUGINS
-    PLUG_load_net_plugin(modname);
+    PLUG_load_plugin_var(modname, PLUGTYPE_NET);
 #else
     BX_PANIC(("could not find networking module '%s'", modname));
 #endif
@@ -131,7 +131,7 @@ void eth_locator_c::cleanup()
 {
 #if BX_PLUGINS
   while (all != NULL) {
-    PLUG_unload_net_plugin(all->type);
+    PLUG_unload_plugin_type(all->type, PLUGTYPE_NET);
   }
 #endif
 }
@@ -226,6 +226,21 @@ void write_pktlog_txt(FILE *pktlog_txt, const Bit8u *buf, unsigned len, bx_bool 
   }
   fprintf(pktlog_txt, "--\n");
   fflush(pktlog_txt);
+}
+
+size_t strip_whitespace(char *s)
+{
+  size_t ptr = 0;
+  char *tmp = (char*)malloc(strlen(s)+1);
+  strcpy(tmp, s);
+  while (s[ptr] == ' ') ptr++;
+  if (ptr > 0) strcpy(s, tmp+ptr);
+  free(tmp);
+  ptr = strlen(s);
+  while ((ptr > 0) && (s[ptr-1] == ' ')) {
+    s[--ptr] = 0;
+  }
+  return ptr;
 }
 
 #endif /* if BX_NETWORKING */

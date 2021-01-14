@@ -1,8 +1,8 @@
 /////////////////////////////////////////////////////////////////////////
-// $Id: stack.cc 12895 2016-03-02 20:44:42Z sshwarts $
+// $Id: stack.cc 13658 2019-12-09 18:37:02Z sshwarts $
 /////////////////////////////////////////////////////////////////////////
 //
-//   Copyright (c) 2012-2015 Stanislav Shwartsman
+//   Copyright (c) 2012-2019 Stanislav Shwartsman
 //          Written by Stanislav Shwartsman [sshwarts at sourceforge net]
 //
 //  This library is free software; you can redistribute it and/or
@@ -108,7 +108,7 @@ void BX_CPP_AttrRegparmN(2) BX_CPU_C::stackPrefetch(bx_address offset, unsigned 
   }
 
   Bit64u lpf = LPFOf(laddr);
-  bx_TLB_entry *tlbEntry = BX_TLB_ENTRY_OF(laddr, 0);
+  bx_TLB_entry *tlbEntry = BX_DTLB_ENTRY_OF(laddr, 0);
   if (tlbEntry->lpf == lpf) {
     // See if the TLB entry privilege level allows us write access from this CPL
     // Assuming that we always can read if write access is OK
@@ -299,7 +299,7 @@ Bit16u BX_CPP_AttrRegparmN(1) BX_CPU_C::stack_read_word(bx_address offset)
       }
     }
 #endif
-    ReadHostWordFromLittleEndian(hostPageAddr, data);
+    data = ReadHostWordFromLittleEndian(hostPageAddr);
     BX_NOTIFY_LIN_MEMORY_ACCESS(get_laddr(BX_SEG_REG_SS, offset),
         (BX_CPU_THIS_PTR pAddrStackPage + espBiased), 2,
          MEMTYPE(BX_CPU_THIS_PTR espPageMemtype), BX_READ, (Bit8u*) &data);
@@ -330,7 +330,7 @@ Bit32u BX_CPP_AttrRegparmN(1) BX_CPU_C::stack_read_dword(bx_address offset)
       }
     }
 #endif
-    ReadHostDWordFromLittleEndian(hostPageAddr, data);
+    data = ReadHostDWordFromLittleEndian(hostPageAddr);
     BX_NOTIFY_LIN_MEMORY_ACCESS(get_laddr(BX_SEG_REG_SS, offset),
         (BX_CPU_THIS_PTR pAddrStackPage + espBiased), 4,
          MEMTYPE(BX_CPU_THIS_PTR espPageMemtype), BX_READ, (Bit8u*) &data);
@@ -361,7 +361,7 @@ Bit64u BX_CPP_AttrRegparmN(1) BX_CPU_C::stack_read_qword(bx_address offset)
       }
     }
 #endif
-    ReadHostQWordFromLittleEndian(hostPageAddr, data);
+    data = ReadHostQWordFromLittleEndian(hostPageAddr);
     BX_NOTIFY_LIN_MEMORY_ACCESS(get_laddr(BX_SEG_REG_SS, offset),
         (BX_CPU_THIS_PTR pAddrStackPage + espBiased), 8,
          MEMTYPE(BX_CPU_THIS_PTR espPageMemtype), BX_READ, (Bit8u*) &data);

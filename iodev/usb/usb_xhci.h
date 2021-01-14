@@ -1,8 +1,8 @@
 /////////////////////////////////////////////////////////////////////////
-// $Id: usb_xhci.h 13150 2017-03-26 08:09:28Z vruppert $
+// $Id: usb_xhci.h 13651 2019-12-09 15:14:23Z sshwarts $
 /////////////////////////////////////////////////////////////////////////
 //
-//  Copyright (C) 2010-2016  Benjamin D Lunt (fys [at] fysnet [dot] net)
+//  Copyright (C) 2010-2017  Benjamin D Lunt (fys [at] fysnet [dot] net)
 //                2011-2017  The Bochs Project
 //
 //  This library is free software; you can redistribute it and/or
@@ -52,7 +52,7 @@
 // HCSPARAMS1
 #define MAX_SLOTS           32   // (1 based)
 #define INTERRUPTERS         8   //
-#define USB_XHCI_PORTS       4   // physical sockets, each supporting USB3 or USB2 (0x08 = uPD720201, 0x04 = uPD720202)
+#define USB_XHCI_PORTS       4   // Port Registers, each supporting USB3 or USB2 (0x08 = uPD720201, 0x04 = uPD720202)
 
 #if (USB_XHCI_PORTS != 4)
   #error "USB_XHCI_PORTS must equal 4"
@@ -558,6 +558,7 @@ private:
 
   static void reset_hc();
   static void reset_port(int);
+  static void reset_port_usb3(int, const int);
   static bx_bool save_hc_state(void);
   static bx_bool restore_hc_state(void);
 

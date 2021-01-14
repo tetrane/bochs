@@ -1,8 +1,8 @@
 /////////////////////////////////////////////////////////////////////////
-// $Id: acpi.h 13154 2017-03-27 19:38:37Z vruppert $
+// $Id: acpi.h 13974 2020-10-10 16:09:58Z vruppert $
 /////////////////////////////////////////////////////////////////////////
 //
-//  Copyright (C) 2006-2017  The Bochs Project
+//  Copyright (C) 2006-2020  The Bochs Project
 //
 //  This library is free software; you can redistribute it and/or
 //  modify it under the terms of the GNU Lesser General Public
@@ -67,6 +67,7 @@ private:
     Bit16u pmen;
     Bit16u pmcntrl;
     Bit64u tmr_overflow_time;
+    Bit8u pmreg[0x38];
     int timer_index;
     struct {
       Bit8u stat;

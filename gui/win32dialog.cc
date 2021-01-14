@@ -1,8 +1,8 @@
 /////////////////////////////////////////////////////////////////////////
-// $Id: win32dialog.cc 13201 2017-04-20 18:31:52Z sshwarts $
+// $Id: win32dialog.cc 13988 2020-10-18 19:57:05Z vruppert $
 /////////////////////////////////////////////////////////////////////////
 //
-//  Copyright (C) 2003-2017  The Bochs Project
+//  Copyright (C) 2003-2020  The Bochs Project
 //
 //  This library is free software; you can redistribute it and/or
 //  modify it under the terms of the GNU Lesser General Public
@@ -19,14 +19,13 @@
 //  Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301 USA
 
 #include "win32dialog.h"
-
-#if BX_USE_WIN32CONFIG
-
 #include "bochs.h"
 #include "param_names.h"
 #include "win32res.h"
 #include "win32paramdlg.h"
 #include "textconfig.h"
+
+#if BX_USE_WIN32CONFIG
 
 const char log_choices[N_ACT+1][16] = {"ignore", "log", "warn user", "ask user", "end simulation", "no change"};
 
@@ -621,9 +620,12 @@ BxEvent* win32_notify_callback(void *unused, BxEvent *event)
     case BX_SYNC_EVT_LOG_DLG:
       LogAskDialog(event);
       return event;
+    case BX_SYNC_EVT_MSG_BOX:
+      MessageBox(GetBochsWindow(), event->u.logmsg.msg, event->u.logmsg.prefix, MB_ICONERROR);
+      return event;
     case BX_SYNC_EVT_ASK_PARAM:
       param = event->u.param.param;
-      if (param->get_type() == BXT_PARAM_STRING) {
+      if (param->get_type() == BXT_PARAM_STRING || param->get_type() == BXT_PARAM_BYTESTRING) {
         sparam = (bx_param_string_c *)param;
         opts = sparam->get_options();
         if (opts & sparam->IS_FILENAME) {
@@ -691,8 +693,10 @@ static int win32_ci_callback(void *userdata, ci_command_t command)
 #endif
           return -1;
         }
+#if BX_USE_TEXTCONFIG
       } else {
         bx_text_config_interface(BX_CI_RUNTIME);
+#endif
       }
       break;
     case CI_SHUTDOWN:

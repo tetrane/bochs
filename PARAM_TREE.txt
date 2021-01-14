@@ -1,4 +1,4 @@
-$Id: PARAM_TREE.txt 13277 2017-08-18 15:19:30Z vruppert $
+$Id: PARAM_TREE.txt 14017 2020-12-04 17:04:40Z vruppert $
 
 Starting from Bochs 2.3 the parameters are organized in a tree structure
 instead of a huge flat list. The parameter tree was required for implementing
@@ -118,6 +118,7 @@ pci
     3
     4
     5
+  advopts
   pcidev
     vendor
     device
@@ -151,11 +152,6 @@ boot_params
   boot_drive2
   boot_drive3
   floppy_sig_check
-  load32bitos
-    which
-    path
-    iolog
-    initrd
 
 floppy
   0
@@ -186,6 +182,7 @@ ata
       cylinders
       heads
       spt
+      sect_size
       status
       model
       biosdetect

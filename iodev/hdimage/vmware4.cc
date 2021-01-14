@@ -1,5 +1,5 @@
 /////////////////////////////////////////////////////////////////////////
-// $Id: vmware4.cc 13055 2017-01-30 19:08:37Z vruppert $
+// $Id: vmware4.cc 14075 2021-01-10 10:18:23Z vruppert $
 /////////////////////////////////////////////////////////////////////////
 
 /*
@@ -10,7 +10,7 @@
  * Contact: snrrrub@gmail.com
  *
  * Copyright (C) 2006       Sharvil Nanavati.
- * Copyright (C) 2006-2017  The Bochs Project
+ * Copyright (C) 2006-2021  The Bochs Project
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -43,10 +43,42 @@
 #include "hdimage.h"
 #include "vmware4.h"
 
-#define LOG_THIS bx_devices.pluginHDImageCtl->
+#define LOG_THIS bx_hdimage_ctl.
 
 const off_t vmware4_image_t::INVALID_OFFSET = (off_t)-1;
 const int vmware4_image_t::SECTOR_SIZE = 512;
+
+#ifndef BXIMAGE
+
+// disk image plugin entry points
+
+int CDECL libvmware4_img_plugin_init(plugin_t *plugin, plugintype_t type)
+{
+  return 0; // Success
+}
+
+void CDECL libvmware4_img_plugin_fini(void)
+{
+  // Nothing here yet
+}
+
+#endif
+
+//
+// Define the static class that registers the derived device image class,
+// and allocates one on request.
+//
+class bx_vmware4_locator_c : public hdimage_locator_c {
+public:
+  bx_vmware4_locator_c(void) : hdimage_locator_c("vmware4") {}
+protected:
+  device_image_t *allocate(Bit64u disk_size, const char *journal) {
+    return (new vmware4_image_t());
+  }
+  int check_format(int fd, Bit64u disk_size) {
+    return (vmware4_image_t::check_format(fd, disk_size));
+  }
+} bx_vmware4_match;
 
 vmware4_image_t::vmware4_image_t()
   : file_descriptor(-1),
@@ -90,7 +122,8 @@ int vmware4_image_t::open(const char* _pathname, int flags)
   current_offset = 0;
   is_dirty = 0;
 
-  hd_size = header.total_sectors * SECTOR_SIZE;
+  sect_size = SECTOR_SIZE;
+  hd_size = header.total_sectors * sect_size;
   cylinders = (unsigned)(header.total_sectors / (16 * 63));
   heads = 16;
   spt = 63;
@@ -100,6 +133,7 @@ int vmware4_image_t::open(const char* _pathname, int flags)
   BX_DEBUG(("   .cylinders = %d", cylinders));
   BX_DEBUG(("   .heads     = %d", heads));
   BX_DEBUG(("   .sectors   = %d", spt));
+  BX_DEBUG(("   .sect size = %d", sect_size));
 
   return 1;
 }

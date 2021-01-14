@@ -1,5 +1,5 @@
 /////////////////////////////////////////////////////////////////////////
-// $Id: cksum.cc 12269 2014-04-02 17:38:09Z vruppert $
+// $Id: cksum.cc 13932 2020-09-02 08:35:44Z vruppert $
 /////////////////////////////////////////////////////////////////////////
 /*
  * Copyright (c) 1988, 1992, 1993
@@ -33,6 +33,7 @@
  * in_cksum.c,v 1.2 1994/08/02 07:48:16 davidg Exp
  */
 
+// NOTE: <stdint.h> included in slirp.h
 #include "slirp.h"
 
 #if BX_NETWORKING && BX_NETMOD_SLIRP
@@ -52,9 +53,9 @@
 
 int cksum(struct mbuf *m, int len)
 {
-	register uint16_t *w;
-	register int sum = 0;
-	register int mlen = 0;
+	uint16_t *w;
+	int sum = 0;
+	int mlen = 0;
 	int byte_swapped = 0;
 
 	union {

@@ -1,8 +1,8 @@
 /////////////////////////////////////////////////////////////////////////
-// $Id: siminterface.h 13073 2017-02-16 21:43:52Z vruppert $
+// $Id: siminterface.h 14067 2021-01-05 21:57:13Z vruppert $
 /////////////////////////////////////////////////////////////////////////
 //
-//  Copyright (C) 2001-2017  The Bochs Project
+//  Copyright (C) 2001-2021  The Bochs Project
 //
 //  This library is free software; you can redistribute it and/or
 //  modify it under the terms of the GNU Lesser General Public
@@ -275,6 +275,7 @@ typedef enum {
   BX_SYNC_EVT_TICK,               // simulator -> CI, wait for response.
   BX_SYNC_EVT_LOG_DLG,            // simulator -> CI, wait for response.
   BX_SYNC_EVT_GET_DBG_COMMAND,    // simulator -> CI, wait for response.
+  BX_SYNC_EVT_MSG_BOX,            // simulator -> CI, wait for response.
   __ALL_EVENTS_BELOW_ARE_ASYNC__,
   BX_ASYNC_EVT_KEY,               // vga window -> simulator
   BX_ASYNC_EVT_MOUSE,             // vga window -> simulator
@@ -283,6 +284,7 @@ typedef enum {
   BX_ASYNC_EVT_DBG_MSG,           // simulator -> CI
   BX_ASYNC_EVT_VALUE_CHANGED,     // simulator -> CI
   BX_ASYNC_EVT_TOOLBAR,           // CI -> simulator
+  BX_ASYNC_EVT_STATUSBAR,         // simulator -> CI
   BX_ASYNC_EVT_REFRESH,           // simulator -> CI
   BX_ASYNC_EVT_QUIT_SIM           // simulator -> CI
 } BxEventType;
@@ -440,7 +442,7 @@ typedef struct {
 
 
 
-// Event type: BX_EVT_TOOLBAR
+// Event type: BX_ASYNC_EVT_TOOLBAR
 // Asynchronous event from the VGAW to the simulator, sent when the user
 // clicks on a toolbar button.  This may one day become something more
 // general, like a command event, but at the moment it's only needed for
@@ -450,6 +452,14 @@ typedef struct {
   bx_bool on; // for toggling buttons, on=true means the toolbar button is
               // pressed. on=false means it is not pressed.
 } BxToolbarEvent;
+
+// Event type: BX_ASYNC_EVT_STATUSAR
+typedef struct {
+  int element;
+  char *text;
+  bx_bool active;
+  bx_bool w;
+} BxStatusbarEvent;
 
 // The BxEvent structure should be used for all events.  Every event has
 // a type and a spot for a return code (only used for synchronous events).
@@ -462,6 +472,7 @@ typedef struct {
     BxParamEvent param;
     BxLogMsgEvent logmsg;
     BxToolbarEvent toolbar;
+    BxStatusbarEvent statbar;
     BxDebugCommand debugcmd;
   } u;
 } BxEvent;
@@ -483,6 +494,12 @@ enum {
   // Run the configuration interface, but make the default action be to
   // start the simulation.
   BX_RUN_START
+};
+
+enum {
+  BX_DDC_MODE_DISABLED,
+  BX_DDC_MODE_BUILTIN,
+  BX_DDC_MODE_FILE
 };
 
 enum {
@@ -535,6 +552,12 @@ enum {
 #define BX_ATA_BIOSDETECT_NONE   2
 
 enum {
+  BX_SECT_SIZE_512,
+  BX_SECT_SIZE_1024,
+  BX_SECT_SIZE_4096
+};
+
+enum {
   BX_ATA_TRANSLATION_NONE,
   BX_ATA_TRANSLATION_LBA,
   BX_ATA_TRANSLATION_LARGE,
@@ -542,24 +565,6 @@ enum {
   BX_ATA_TRANSLATION_AUTO
 };
 #define BX_ATA_TRANSLATION_LAST  BX_ATA_TRANSLATION_AUTO
-
-enum {
-  BX_HDIMAGE_MODE_FLAT,
-  BX_HDIMAGE_MODE_CONCAT,
-  BX_HDIMAGE_MODE_EXTDISKSIM,
-  BX_HDIMAGE_MODE_DLL_HD,
-  BX_HDIMAGE_MODE_SPARSE,
-  BX_HDIMAGE_MODE_VMWARE3,
-  BX_HDIMAGE_MODE_VMWARE4,
-  BX_HDIMAGE_MODE_UNDOABLE,
-  BX_HDIMAGE_MODE_GROWING,
-  BX_HDIMAGE_MODE_VOLATILE,
-  BX_HDIMAGE_MODE_VVFAT,
-  BX_HDIMAGE_MODE_VPC,
-  BX_HDIMAGE_MODE_VBOX
-};
-#define BX_HDIMAGE_MODE_LAST     BX_HDIMAGE_MODE_VBOX
-#define BX_HDIMAGE_MODE_UNKNOWN  -1
 
 enum {
   BX_CLOCK_SYNC_NONE,
@@ -571,7 +576,8 @@ enum {
 
 enum {
   BX_PCI_CHIPSET_I430FX,
-  BX_PCI_CHIPSET_I440FX
+  BX_PCI_CHIPSET_I440FX,
+  BX_PCI_CHIPSET_I440BX
 };
 
 enum {
@@ -628,7 +634,6 @@ BOCHSAPI extern const char *floppy_type_names[];
 BOCHSAPI extern int floppy_type_n_sectors[];
 BOCHSAPI extern const char *media_status_names[];
 BOCHSAPI extern const char *bochs_bootdisk_names[];
-BOCHSAPI extern const char *hdimage_mode_names[];
 BOCHSAPI extern const char *sound_driver_names[];
 
 ////////////////////////////////////////////////////////////////////
@@ -651,8 +656,8 @@ typedef Bit32s (*addon_option_save_t)(FILE *fp);
 
 // bx_gui->set_display_mode() changes the mode between the configuration
 // interface and the simulation.  This is primarily intended for display
-// libraries which have a full-screen mode such as SDL, term, and svgalib.  The
-// display mode is set to DISP_MODE_CONFIG before displaying any configuration
+// libraries which have a full-screen mode such as SDL or term.  The display
+// mode is set to DISP_MODE_CONFIG before displaying any configuration
 // menus, for panics that requires user input, when entering the debugger, etc.
 // It is set to DISP_MODE_SIM when the Bochs simulation resumes.  The constants
 // are defined here so that configuration interfaces can use them with the
@@ -701,12 +706,11 @@ public:
   virtual int read_rc(const char *path) {return -1;}
   virtual int write_rc(const char *rc, int overwrite) {return -1;}
   virtual int get_log_file(char *path, int len) {return -1;}
-  virtual int set_log_file(char *path) {return -1;}
+  virtual int set_log_file(const char *path) {return -1;}
   virtual int get_log_prefix(char *prefix, int len) {return -1;}
-  virtual int set_log_prefix(char *prefix) {return -1;}
+  virtual int set_log_prefix(const char *prefix) {return -1;}
   virtual int get_debugger_log_file(char *path, int len) {return -1;}
-  virtual int set_debugger_log_file(char *path) {return -1;}
-  virtual int hdimage_get_mode(const char *mode)  {return -1;}
+  virtual int set_debugger_log_file(const char *path) {return -1;}
 
   // The CI calls set_notify_callback to register its event handler function.
   // This event handler function is called whenever the simulator needs to
@@ -743,6 +747,8 @@ public:
   virtual int ask_filename(const char *filename, int maxlen, const char *prompt, const char *the_default, int flags) {return -1;}
   // yes/no dialog
   virtual int ask_yes_no(const char *title, const char *prompt, bx_bool the_default) {return -1;}
+  // simple message box
+  virtual void message_box(const char *title, const char *message) {}
   // called at a regular interval, currently by the bx_devices_c::timer()
   virtual void periodic() {}
   virtual int create_disk_image(const char *filename, int sectors, bx_bool overwrite) {return -3;}
@@ -764,6 +770,8 @@ public:
   virtual bx_param_c *get_first_hd() {return NULL;}
   // return 1 if device is connected to a PCI slot
   virtual bx_bool is_pci_device(const char *name) {return 0;}
+  // return 1 if device is connected to the AGP slot
+  virtual bx_bool is_agp_device(const char *name) {return 0;}
 #if BX_DEBUGGER
   // for debugger: same behavior as pressing control-C
   virtual void debug_break() {}
@@ -824,6 +832,7 @@ public:
   virtual int  parse_nic_params(const char *context, const char *param, bx_list_c *base) {return 0;}
   virtual int  parse_usb_port_params(const char *context, bx_bool devopt,
                                      const char *param, int maxports, bx_list_c *base) {return 0;}
+  virtual int  split_option_list(const char *msg, const char *rawopt, char **argv, int max_argv) {return 0;}
   virtual int  write_param_list(FILE *fp, bx_list_c *base, const char *optname, bx_bool multiline) {return 0;}
   virtual int  write_usb_options(FILE *fp, int maxports, bx_list_c *base) {return 0;}
 

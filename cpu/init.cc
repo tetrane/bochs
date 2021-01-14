@@ -1,8 +1,8 @@
 /////////////////////////////////////////////////////////////////////////
-// $Id: init.cc 13165 2017-03-31 07:34:08Z sshwarts $
+// $Id: init.cc 13869 2020-05-29 12:35:30Z sshwarts $
 /////////////////////////////////////////////////////////////////////////
 //
-//  Copyright (C) 2001-2017  The Bochs Project
+//  Copyright (C) 2001-2019  The Bochs Project
 //
 //  This library is free software; you can redistribute it and/or
 //  modify it under the terms of the GNU Lesser General Public
@@ -113,6 +113,10 @@ void BX_CPU_C::initialize(void)
 #endif
 
   init_FetchDecodeTables(); // must be called after init_isa_features_bitmask()
+
+#if BX_CPU_LEVEL >= 6
+  xsave_xrestor_init();
+#endif
 
 #if BX_CONFIGURE_MSRS
   for (unsigned n=0; n < BX_MSR_MAX_INDEX; n++) {
@@ -234,6 +238,11 @@ void BX_CPU_C::register_state(void)
   BXRS_HEX_PARAM_SIMPLE(cpu, EDI);
   BXRS_HEX_PARAM_SIMPLE(cpu, EIP);
 #endif
+#if BX_SUPPORT_CET
+  if (BX_CPUID_SUPPORT_ISA_EXTENSION(BX_ISA_CET)) {
+    BXRS_HEX_PARAM_SIMPLE(cpu, SSP);
+  }
+#endif
   BXRS_PARAM_SPECIAL32(cpu, EFLAGS,
          param_save_handler, param_restore_handler);
 
@@ -260,7 +269,7 @@ void BX_CPU_C::register_state(void)
 #endif
 
 #if BX_CPU_LEVEL >= 5
-  BXRS_HEX_PARAM_FIELD(cpu, tsc_last_reset, tsc_last_reset);
+  BXRS_HEX_PARAM_FIELD(cpu, tsc_adjust, tsc_adjust);
 #if BX_SUPPORT_VMX || BX_SUPPORT_SVM
   BXRS_HEX_PARAM_FIELD(cpu, tsc_offset, tsc_offset);
 #endif
@@ -268,6 +277,7 @@ void BX_CPU_C::register_state(void)
 
 #if BX_SUPPORT_PKEYS
   BXRS_HEX_PARAM_FIELD(cpu, pkru, pkru);
+  BXRS_HEX_PARAM_FIELD(cpu, pkrs, pkrs);
 #endif
 
   for(n=0; n<6; n++) {
@@ -389,9 +399,27 @@ void BX_CPU_C::register_state(void)
   BXRS_HEX_PARAM_FIELD(MSR, mtrr_deftype, msr.mtrr_deftype);
 
   if (BX_CPUID_SUPPORT_ISA_EXTENSION(BX_ISA_XSAVES)) {
-    BXRS_HEX_PARAM_FIELD(MSR, msr_xss, msr.msr_xss);
+    BXRS_HEX_PARAM_FIELD(MSR, ia32_xss, msr.ia32_xss);
   }
 #endif
+#if BX_SUPPORT_CET
+  if (BX_CPUID_SUPPORT_ISA_EXTENSION(BX_ISA_CET)) {
+    BXRS_HEX_PARAM_FIELD(MSR, ia32_interrupt_ssp_table, msr.ia32_interrupt_ssp_table);
+    BXRS_HEX_PARAM_FIELD(MSR, ia32_cet_s_ctrl, msr.ia32_cet_control[0]);
+    BXRS_HEX_PARAM_FIELD(MSR, ia32_cet_u_ctrl, msr.ia32_cet_control[1]);
+    BXRS_HEX_PARAM_FIELD(MSR, ia32_pl0_ssp, msr.ia32_pl_ssp[0]);
+    BXRS_HEX_PARAM_FIELD(MSR, ia32_pl1_ssp, msr.ia32_pl_ssp[1]);
+    BXRS_HEX_PARAM_FIELD(MSR, ia32_pl2_ssp, msr.ia32_pl_ssp[2]);
+    BXRS_HEX_PARAM_FIELD(MSR, ia32_pl3_ssp, msr.ia32_pl_ssp[3]);
+  }
+#endif
+  if (BX_CPUID_SUPPORT_ISA_EXTENSION(BX_ISA_SCA_MITIGATIONS)) {
+    BXRS_HEX_PARAM_FIELD(MSR, ia32_spec_ctrl, msr.ia32_spec_ctrl);
+  }
+#if BX_SUPPORT_VMX
+  BXRS_HEX_PARAM_FIELD(MSR, ia32_feature_ctrl, msr.ia32_feature_ctrl);
+#endif
+
 #if BX_CONFIGURE_MSRS
   bx_list_c *MSRS = new bx_list_c(cpu, "USER_MSR");
   for(n=0; n < BX_MSR_MAX_INDEX; n++) {
@@ -478,22 +506,41 @@ void BX_CPU_C::register_state(void)
   BXRS_PARAM_BOOL(cpu, in_smm, in_smm);
 
 #if BX_DEBUGGER
-  bx_list_c *tlb = new bx_list_c(cpu, "TLB");
+  bx_list_c *dtlb = new bx_list_c(cpu, "DTLB");
 #if BX_CPU_LEVEL >= 5
-  BXRS_PARAM_BOOL(tlb, split_large, TLB.split_large);
+  BXRS_PARAM_BOOL(dtlb, split_large, DTLB.split_large);
 #endif
-  for (n=0; n<BX_TLB_SIZE; n++) {
+  for (n=0; n<BX_DTLB_SIZE; n++) {
     sprintf(name, "entry%u", n);
-    bx_list_c *tlb_entry = new bx_list_c(tlb, name);
-    BXRS_HEX_PARAM_FIELD(tlb_entry, lpf, TLB.entry[n].lpf);
-    BXRS_HEX_PARAM_FIELD(tlb_entry, lpf_mask, TLB.entry[n].lpf_mask);
-    BXRS_HEX_PARAM_FIELD(tlb_entry, ppf, TLB.entry[n].ppf);
-    BXRS_HEX_PARAM_FIELD(tlb_entry, accessBits, TLB.entry[n].accessBits);
+    bx_list_c *tlb_entry = new bx_list_c(dtlb, name);
+    BXRS_HEX_PARAM_FIELD(tlb_entry, lpf, DTLB.entry[n].lpf);
+    BXRS_HEX_PARAM_FIELD(tlb_entry, lpf_mask, DTLB.entry[n].lpf_mask);
+    BXRS_HEX_PARAM_FIELD(tlb_entry, ppf, DTLB.entry[n].ppf);
+    BXRS_HEX_PARAM_FIELD(tlb_entry, accessBits, DTLB.entry[n].accessBits);
 #if BX_SUPPORT_PKEYS
-    BXRS_HEX_PARAM_FIELD(tlb_entry, pkey, TLB.entry[n].pkey);
+    BXRS_HEX_PARAM_FIELD(tlb_entry, pkey, DTLB.entry[n].pkey);
 #endif
 #if BX_SUPPORT_MEMTYPE
-    BXRS_HEX_PARAM_FIELD(tlb_entry, memtype, TLB.entry[n].memtype);
+    BXRS_HEX_PARAM_FIELD(tlb_entry, memtype, DTLB.entry[n].memtype);
+#endif
+  }
+
+  bx_list_c *itlb = new bx_list_c(cpu, "ITLB");
+#if BX_CPU_LEVEL >= 5
+  BXRS_PARAM_BOOL(itlb, split_large, ITLB.split_large);
+#endif
+  for (n=0; n<BX_ITLB_SIZE; n++) {
+    sprintf(name, "entry%u", n);
+    bx_list_c *tlb_entry = new bx_list_c(itlb, name);
+    BXRS_HEX_PARAM_FIELD(tlb_entry, lpf, ITLB.entry[n].lpf);
+    BXRS_HEX_PARAM_FIELD(tlb_entry, lpf_mask, ITLB.entry[n].lpf_mask);
+    BXRS_HEX_PARAM_FIELD(tlb_entry, ppf, ITLB.entry[n].ppf);
+    BXRS_HEX_PARAM_FIELD(tlb_entry, accessBits, ITLB.entry[n].accessBits);
+#if BX_SUPPORT_PKEYS
+    BXRS_HEX_PARAM_FIELD(tlb_entry, pkey, ITLB.entry[n].pkey);
+#endif
+#if BX_SUPPORT_MEMTYPE
+    BXRS_HEX_PARAM_FIELD(tlb_entry, memtype, ITLB.entry[n].memtype);
 #endif
   }
 #endif
@@ -610,7 +657,7 @@ void BX_CPU_C::after_restore_state(void)
 #endif
 
 #if BX_SUPPORT_PKEYS
-  set_PKRU(BX_CPU_THIS_PTR pkru);
+  set_PKeys(BX_CPU_THIS_PTR pkru, BX_CPU_THIS_PTR pkrs);
 #endif
 
   assert_checks();
@@ -823,24 +870,23 @@ void BX_CPU_C::reset(unsigned source)
   if (source == BX_RESET_HARDWARE) {
     BX_CPU_THIS_PTR xcr0.set32(0x1);
   }
-  BX_CPU_THIS_PTR xcr0_suppmask = 0x3;
-#if BX_SUPPORT_AVX
-  if (BX_CPUID_SUPPORT_ISA_EXTENSION(BX_ISA_AVX))
-    BX_CPU_THIS_PTR xcr0_suppmask |= BX_XCR0_YMM_MASK;
-#if BX_SUPPORT_EVEX
-  if (BX_CPUID_SUPPORT_ISA_EXTENSION(BX_ISA_AVX512))
-    BX_CPU_THIS_PTR xcr0_suppmask |= BX_XCR0_OPMASK_MASK | BX_XCR0_ZMM_HI256_MASK | BX_XCR0_HI_ZMM_MASK;
+  BX_CPU_THIS_PTR xcr0_suppmask = get_xcr0_allow_mask();
+
+  BX_CPU_THIS_PTR msr.ia32_xss = 0;
+
+#if BX_SUPPORT_CET
+  BX_CPU_THIS_PTR msr.ia32_interrupt_ssp_table = 0;
+  BX_CPU_THIS_PTR msr.ia32_cet_control[0] = BX_CPU_THIS_PTR msr.ia32_cet_control[1] = 0;
+  for (n=0;n<4;n++)
+    BX_CPU_THIS_PTR msr.ia32_pl_ssp[n] = 0;
+  SSP = 0;
 #endif
-#endif // BX_SUPPORT_AVX
-#if BX_SUPPORT_PKEYS
-  if (BX_CPUID_SUPPORT_ISA_EXTENSION(BX_ISA_PKU))
-    BX_CPU_THIS_PTR xcr0_suppmask |= BX_XCR0_PKRU_MASK;
-#endif
-  BX_CPU_THIS_PTR msr.msr_xss = 0;
 #endif // BX_CPU_LEVEL >= 6
 
-/* initialise MSR registers to defaults */
 #if BX_CPU_LEVEL >= 5
+  BX_CPU_THIS_PTR msr.ia32_spec_ctrl = 0;
+
+/* initialise MSR registers to defaults */
 #if BX_SUPPORT_APIC
   /* APIC Address, APIC enabled and BSP is default, we'll fill in the rest later */
   BX_CPU_THIS_PTR msr.apicbase = BX_LAPIC_BASE_ADDR;
@@ -897,7 +943,7 @@ void BX_CPU_C::reset(unsigned source)
   if (source == BX_RESET_HARDWARE) {
 
 #if BX_SUPPORT_PKEYS
-    BX_CPU_THIS_PTR set_PKRU(0);
+    BX_CPU_THIS_PTR set_PKeys(0, 0);
 #endif
 
 #if BX_CPU_LEVEL >= 6
@@ -1004,9 +1050,7 @@ void BX_CPU_C::reset(unsigned source)
   BX_CPU_THIS_PTR vmcsptr = BX_CPU_THIS_PTR vmxonptr = BX_INVALID_VMCSPTR;
   set_VMCSPTR(BX_CPU_THIS_PTR vmcsptr);
   if (source == BX_RESET_HARDWARE) {
-    /* enable VMX, should be done in BIOS instead */
-    BX_CPU_THIS_PTR msr.ia32_feature_ctrl =
-      /*BX_IA32_FEATURE_CONTROL_LOCK_BIT | */BX_IA32_FEATURE_CONTROL_VMX_ENABLE_BIT;
+    BX_CPU_THIS_PTR msr.ia32_feature_ctrl = 0;
   }
 #endif
 
@@ -1048,6 +1092,8 @@ void BX_CPU_C::reset(unsigned source)
 
 #if BX_CPU_LEVEL >= 4
   BX_CPU_THIS_PTR cpuid->dump_cpuid();
+
+  BX_CPU_THIS_PTR cpuid->dump_features();
 #endif
 
   BX_INSTR_RESET(BX_CPU_ID, source);

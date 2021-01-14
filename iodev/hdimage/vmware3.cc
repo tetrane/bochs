@@ -1,5 +1,5 @@
 /////////////////////////////////////////////////////////////////////////
-// $Id: vmware3.cc 13055 2017-01-30 19:08:37Z vruppert $
+// $Id: vmware3.cc 14075 2021-01-10 10:18:23Z vruppert $
 /////////////////////////////////////////////////////////////////////////
 
 /*
@@ -10,7 +10,7 @@
  * Contact: snrrrub@yahoo.com
  *
  * Copyright (C) 2003       Net Integration Technologies, Inc.
- * Copyright (C) 2003-2017  The Bochs Project
+ * Copyright (C) 2003-2021  The Bochs Project
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -45,10 +45,42 @@
 
 const off_t vmware3_image_t::INVALID_OFFSET=(off_t)-1;
 
-#define LOG_THIS bx_devices.pluginHDImageCtl->
+#define LOG_THIS bx_hdimage_ctl.
 
 #define DTOH32_HEADER(field) (header.field = (dtoh32(header.field)))
 #define HTOD32_HEADER(field) (header.field = (htod32(header.field)))
+
+#ifndef BXIMAGE
+
+// disk image plugin entry points
+
+int CDECL libvmware3_img_plugin_init(plugin_t *plugin, plugintype_t type)
+{
+  return 0; // Success
+}
+
+void CDECL libvmware3_img_plugin_fini(void)
+{
+  // Nothing here yet
+}
+
+#endif
+
+//
+// Define the static class that registers the derived device image class,
+// and allocates one on request.
+//
+class bx_vmware3_locator_c : public hdimage_locator_c {
+public:
+  bx_vmware3_locator_c(void) : hdimage_locator_c("vmware3") {}
+protected:
+  device_image_t *allocate(Bit64u disk_size, const char *journal) {
+    return (new vmware3_image_t());
+  }
+  int check_format(int fd, Bit64u disk_size) {
+    return (vmware3_image_t::check_format(fd, disk_size));
+  }
+} bx_vmware3_match;
 
 int vmware3_image_t::check_format(int fd, Bit64u imgsize)
 {
@@ -180,18 +212,21 @@ int vmware3_image_t::write_ints(int fd, Bit32u *buffer, size_t count)
 char* vmware3_image_t::generate_cow_name(const char * filename, unsigned chain)
 {
   char * name = new char[strlen(filename) + 4];
-  if(name == NULL)
+  if (name == NULL)
     BX_PANIC(("unable to allocate %u bytes for vmware3 COW file name (base: %s, chain: %u)", (unsigned)strlen(filename) + 4, filename, chain));
   strcpy(name, filename);
   if (chain != 0) {
+    char chainstr[12];
+    sprintf(chainstr, "-%02u", chain + 1);
     char * period = strrchr(name, '.');
     if (period != 0) {
       char temp[1024];
-      strcpy(temp, period + 1);
+      strcpy(temp, period);
       *period = 0;
-      sprintf(name, "%s-%02d.%s", name, chain + 1, temp);
+      strcat(name, chainstr);
+      strcat(name, temp);
     } else {
-      sprintf(name, "%s-%02d", name, chain + 1);
+      strcat(name, chainstr);
     }
   }
   return name;
@@ -290,16 +325,17 @@ int vmware3_image_t::open(const char* _pathname, int flags)
   }
   current = &images[0];
   requested_offset = 0;
+  sect_size = 512;
   if (header.total_sectors_in_disk != 0) {
     cylinders = header.cylinders_in_disk;
     heads = header.heads_in_disk;
     spt = header.sectors_in_disk;
-    hd_size = header.total_sectors_in_disk * 512;
+    hd_size = header.total_sectors_in_disk * sect_size;
   } else {
     cylinders = header.cylinders;
     heads = header.heads;
     spt = header.sectors;
-    hd_size = header.total_sectors * 512;
+    hd_size = header.total_sectors * sect_size;
   }
   return 1;
 }

@@ -1,5 +1,5 @@
 /////////////////////////////////////////////////////////////////////////
-// $Id: parser.y 13281 2017-08-22 21:03:58Z sshwarts $
+// $Id: parser.y 14051 2021-01-02 12:12:02Z sshwarts $
 /////////////////////////////////////////////////////////////////////////
 
 %{
@@ -84,8 +84,9 @@ Bit64u eval_value;
 %token <sval> BX_TOKEN_TAKE
 %token <sval> BX_TOKEN_DMA
 %token <sval> BX_TOKEN_IRQ
+%token <sval> BX_TOKEN_SMI
+%token <sval> BX_TOKEN_NMI
 %token <sval> BX_TOKEN_TLB
-%token <sval> BX_TOKEN_HEX
 %token <sval> BX_TOKEN_DISASM
 %token <sval> BX_TOKEN_INSTRUMENT
 %token <sval> BX_TOKEN_STRING
@@ -131,6 +132,7 @@ Bit64u eval_value;
 %token BX_TOKEN_REG_IP
 %token BX_TOKEN_REG_EIP
 %token BX_TOKEN_REG_RIP
+%token BX_TOKEN_REG_SSP
 %type <uval> optional_numeric
 %type <uval> vexpression
 %type <uval> expression
@@ -905,6 +907,16 @@ take_command:
         bx_dbg_take_command($2, 1);
         free($1); free($2);
       }
+    | BX_TOKEN_TAKE BX_TOKEN_SMI '\n'
+      {
+        bx_dbg_take_command($2, 1);
+        free($1); free($2);
+      }
+    | BX_TOKEN_TAKE BX_TOKEN_NMI '\n'
+      {
+        bx_dbg_take_command($2, 1);
+        free($1); free($2);
+      }
     ;
 
 disassemble_command:
@@ -941,11 +953,6 @@ disassemble_command:
     | BX_TOKEN_DISASM BX_TOKEN_SWITCH_MODE '\n'
       {
         bx_dbg_disassemble_switch_mode();
-        free($1); free($2);
-      }
-    | BX_TOKEN_DISASM BX_TOKEN_HEX BX_TOKEN_TOGGLE_ON_OFF '\n'
-      {
-        bx_dbg_disassemble_hex_mode_switch($3);
         free($1); free($2);
       }
     | BX_TOKEN_DISASM BX_TOKEN_SIZE '=' BX_TOKEN_NUMERIC '\n'
@@ -1075,7 +1082,7 @@ help_command:
        }
      | BX_TOKEN_HELP BX_TOKEN_TRACEMEM '\n'
        {
-         dbg_printf("trace-mem on  - print all memory accesses occured during instruction execution\n");
+         dbg_printf("trace-mem on  - print all memory accesses occurred during instruction execution\n");
          dbg_printf("trace-mem off - disable memory accesses tracing\n");
          free($1);free($2);
        }
@@ -1319,6 +1326,7 @@ vexpression:
    | BX_TOKEN_REG_IP                 { $$ = bx_dbg_get_ip (); }
    | BX_TOKEN_REG_EIP                { $$ = bx_dbg_get_eip(); }
    | BX_TOKEN_REG_RIP                { $$ = bx_dbg_get_rip(); }
+   | BX_TOKEN_REG_SSP                { $$ = bx_dbg_get_ssp(); }
    | vexpression '+' vexpression     { $$ = $1 + $3; }
    | vexpression '-' vexpression     { $$ = $1 - $3; }
    | vexpression '*' vexpression     { $$ = $1 * $3; }
@@ -1348,6 +1356,7 @@ expression:
    | BX_TOKEN_REG_IP                 { $$ = bx_dbg_get_ip (); }
    | BX_TOKEN_REG_EIP                { $$ = bx_dbg_get_eip(); }
    | BX_TOKEN_REG_RIP                { $$ = bx_dbg_get_rip(); }
+   | BX_TOKEN_REG_SSP                { $$ = bx_dbg_get_ssp(); }
    | expression ':' expression       { $$ = bx_dbg_get_laddr ($1, $3); }
    | expression '+' expression       { $$ = $1 + $3; }
    | expression '-' expression       { $$ = $1 - $3; }

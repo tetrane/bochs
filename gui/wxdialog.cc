@@ -1,8 +1,8 @@
 /////////////////////////////////////////////////////////////////
-// $Id: wxdialog.cc 13252 2017-06-04 09:32:58Z vruppert $
+// $Id: wxdialog.cc 14037 2020-12-26 08:53:06Z vruppert $
 /////////////////////////////////////////////////////////////////
 //
-//  Copyright (C) 2002-2016  The Bochs Project
+//  Copyright (C) 2002-2020  The Bochs Project
 //
 //  This library is free software; you can redistribute it and/or
 //  modify it under the terms of the GNU Lesser General Public
@@ -45,9 +45,12 @@
 
 #include "osdep.h"               // workarounds for missing stuff
 #include "gui/siminterface.h"    // interface to the simulator
-#include "bxversion.h"           // get version string
 #include "wxdialog.h"            // custom dialog boxes
 #include "wxmain.h"              // wxwidgets shared stuff
+
+#if !defined(wxADJUST_MINSIZE)
+#define wxADJUST_MINSIZE 0
+#endif
 
 //////////////////////////////////////////////////////////////////////
 // constants, prototypes
@@ -100,20 +103,20 @@ LogMsgAskDialog::LogMsgAskDialog(
 {
   for (int i=0; i<N_BUTTONS; i++) enabled[i] = TRUE;
   vertSizer = new wxBoxSizer(wxVERTICAL);
-  context = new wxStaticText (this, -1, wxT(""));
-  wxFont font = context->GetFont ();
-  font.SetWeight (wxBOLD);
-  font.SetPointSize (2 + font.GetPointSize ());
-  context->SetFont (font);
-  message = new wxStaticText (this, -1, wxT(""));
-  message->SetFont (font);
-  dontAsk = new wxCheckBox (this, -1, LOG_MSG_DONT_ASK_STRING);
+  context = new wxStaticText(this, -1, wxT(""));
+  wxFont font = context->GetFont();
+  font.SetWeight(wxFONTWEIGHT_BOLD);
+  font.SetPointSize(2 + font.GetPointSize());
+  context->SetFont(font);
+  message = new wxStaticText(this, -1, wxT(""));
+  message->SetFont(font);
+  dontAsk = new wxCheckBox(this, -1, LOG_MSG_DONT_ASK_STRING);
   btnSizer = new wxBoxSizer(wxHORIZONTAL);
   // fill vertical sizer
-  vertSizer->Add (context, 0, wxGROW|wxALIGN_LEFT|wxLEFT|wxTOP, 30);
-  vertSizer->Add (message, 0, wxGROW|wxALIGN_LEFT|wxLEFT, 30);
-  vertSizer->Add (dontAsk, 0, wxALIGN_CENTER|wxTOP, 30);
-  vertSizer->Add (btnSizer, 0, wxALIGN_CENTER|wxTOP, 30);
+  vertSizer->Add(context, 0, wxGROW|wxALIGN_LEFT|wxLEFT|wxTOP, 30);
+  vertSizer->Add(message, 0, wxGROW|wxALIGN_LEFT|wxLEFT, 30);
+  vertSizer->Add(dontAsk, 0, wxALIGN_CENTER|wxTOP, 30);
+  vertSizer->Add(btnSizer, 0, wxALIGN_CENTER|wxTOP, 30);
   // Some object creation and layout is postponed until Init()
   // so that caller has time to configure the dialog.
 }
@@ -509,7 +512,7 @@ void PluginControlDialog::OnEvent(wxCommandEvent& event)
     case ID_Load:
       {
         wxString tmpname(plugname->GetValue());
-        strncpy(buf, tmpname.mb_str(wxConvUTF8), sizeof(buf));
+        strncpy(buf, tmpname.mb_str(wxConvUTF8), sizeof(buf) - 1);
         buf[sizeof(buf) - 1] = '\0';
         if (SIM->opt_plugin_ctrl(buf, 1)) {
           tmpname.Printf(wxT("Plugin '%s' loaded"), buf);
@@ -522,7 +525,7 @@ void PluginControlDialog::OnEvent(wxCommandEvent& event)
       {
         int i = pluglist->GetSelection();
         wxString tmpname = pluglist->GetString(i);
-        strncpy(buf, tmpname.mb_str(wxConvUTF8), sizeof(buf));
+        strncpy(buf, tmpname.mb_str(wxConvUTF8), sizeof(buf) - 1);
         buf[sizeof(buf) - 1] = '\0';
         if (SIM->opt_plugin_ctrl(buf, 0)) {
           tmpname.Printf(wxT("Plugin '%s' unloaded"), buf);
@@ -873,6 +876,7 @@ void ParamDialog::AddParam(
         break;
       }
     case BXT_PARAM_STRING:
+    case BXT_PARAM_BYTESTRING:
       {
         bx_param_string_c *param = (bx_param_string_c*) param_generic;
         char value[1024];
@@ -880,9 +884,9 @@ void ParamDialog::AddParam(
         bool isFilename = param->get_options() & param->IS_FILENAME;
         wxTextCtrl *txtctrl = new wxTextCtrl(context->parent, pstr->id, wxT(""), wxDefaultPosition, isFilename? longTextSize : normalTextSize);
         if (description) txtctrl->SetToolTip(wxString(description, wxConvUTF8));
-        param->sprint(value, 1024, 0);
+        param->dump_param(value, 1024);
         txtctrl->SetValue(wxString(value, wxConvUTF8));
-        if ((param->get_options() & param->RAW_BYTES) == 0) {
+        if (type != BXT_PARAM_BYTESTRING) {
           txtctrl->SetMaxLength(param->get_maxsize());
         }
         sizer->Add(txtctrl, 0, wxALL, 2);
@@ -1079,31 +1083,20 @@ bool ParamDialog::CopyGuiToParam(bx_param_c *param)
       bx_param_string_c *stringp = (bx_param_string_c*) pstr->param;
       char buf[1024];
       wxString tmp(pstr->u.text->GetValue());
-      if (stringp->get_options() & stringp->RAW_BYTES) {
-        char src[1024];
-        int p = 0;
-        unsigned int n;
-        strcpy(src, tmp.mb_str(wxConvUTF8));
-        for (i=0; i<stringp->get_maxsize(); i++)
-          buf[i] = 0;
-        for (i=0; i<stringp->get_maxsize(); i++) {
-          while (src[p] == stringp->get_separator())
-            p++;
-          if (src[p] == 0) break;
-          // try to read a byte of hex
-          if (sscanf(src+p, "%02x", &n) == 1) {
-            buf[i] = n;
-            p+=2;
-          } else {
-            wxMessageBox(wxT("Illegal raw byte format"), wxT("Error"), wxOK | wxICON_ERROR, this);
-            return false;
-          }
-        }
-      } else {
-        strncpy(buf, tmp.mb_str(wxConvUTF8), sizeof(buf));
-      }
+      strncpy(buf, tmp.mb_str(wxConvUTF8), sizeof(buf) - 1);
       buf[sizeof(buf)-1] = 0;
       if (!stringp->equals(buf)) stringp->set(buf);
+      break;
+    }
+    case BXT_PARAM_BYTESTRING: {
+      bx_param_bytestring_c *stringp = (bx_param_bytestring_c*) pstr->param;
+      wxString tmp(pstr->u.text->GetValue());
+      char src[1024];
+      strcpy(src, tmp.mb_str(wxConvUTF8));
+      if (!stringp->parse_param(src)) {
+        wxMessageBox(wxT("Illegal raw byte format"), wxT("Error"), wxOK | wxICON_ERROR, this);
+        return false;
+      }
       break;
     }
     case BXT_LIST: {
@@ -1180,7 +1173,8 @@ void ParamDialog::ProcessDependentList(ParamStruct *pstrChanged, bool enabled)
       }
     } else if ((pstrChanged->param->get_type() == BXT_PARAM_BOOL) ||
                (pstrChanged->param->get_type() == BXT_PARAM_NUM) ||
-               (pstrChanged->param->get_type() == BXT_PARAM_STRING)) {
+               (pstrChanged->param->get_type() == BXT_PARAM_STRING) ||
+               (pstrChanged->param->get_type() == BXT_PARAM_BYTESTRING)) {
       bx_param_c *param = pstrChanged->param;
       if (param->get_type() == BXT_PARAM_BOOL) {
         value = pstrChanged->u.checkbox->GetValue();
@@ -1242,7 +1236,8 @@ void ParamDialog::CopyParamToGui()
         pstr->u.choice->SetSelection(enump->get() - enump->get_min());
         break;
         }
-      case BXT_PARAM_STRING: {
+      case BXT_PARAM_STRING:
+      case BXT_PARAM_BYTESTRING: {
         bx_param_string_c *stringp = (bx_param_string_c*) pstr->param;
         pstr->u.text->SetValue(wxString(stringp->getptr(), wxConvUTF8));
         break;
@@ -1271,6 +1266,7 @@ void ParamDialog::OnEvent(wxCommandEvent& event)
         case BXT_PARAM_NUM:
         case BXT_PARAM_ENUM:
         case BXT_PARAM_STRING:
+        case BXT_PARAM_BYTESTRING:
           EnableChanged(pstr);
           break;
       }
@@ -1377,7 +1373,7 @@ void FloppyConfigDialog::OnEvent(wxCommandEvent& event)
         {
           int cap = pstrMedia->u.choice->GetSelection();
           char name[1024];
-          strncpy(name, pstrPath->u.text->GetValue().mb_str(wxConvUTF8), sizeof(name));
+          strncpy(name, pstrPath->u.text->GetValue().mb_str(wxConvUTF8), sizeof(name) - 1);
           name[sizeof(name) - 1] = '\0';
           if ((floppy_type_n_sectors[cap] > 0) && (strlen(name) > 0) && (strcmp(name, "none"))) {
             if (CreateImage(0, floppy_type_n_sectors[cap], name)) {
@@ -1529,7 +1525,7 @@ int GetTextCtrlInt(wxTextCtrl *ctrl,
 {
   wxString tmp(ctrl->GetValue());
   char buf[1024];
-  strncpy(buf, tmp.mb_str(wxConvUTF8), sizeof(buf));
+  strncpy(buf, tmp.mb_str(wxConvUTF8), sizeof(buf) - 1);
   buf[sizeof(buf)-1] = '\0';
   int n = strtol(buf, NULL, 0);
   if (n != LONG_MIN && n != LONG_MAX) {

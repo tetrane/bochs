@@ -1,8 +1,8 @@
 /////////////////////////////////////////////////////////////////////////
-// $Id: crregs.h 13120 2017-03-15 22:48:27Z sshwarts $
+// $Id: crregs.h 13963 2020-10-03 09:23:28Z sshwarts $
 /////////////////////////////////////////////////////////////////////////
 //
-//   Copyright (c) 2007-2017 Stanislav Shwartsman
+//   Copyright (c) 2007-2020 Stanislav Shwartsman
 //          Written by Stanislav Shwartsman [sshwarts at sourceforge net]
 //
 //  This library is free software; you can redistribute it and/or
@@ -100,14 +100,18 @@ struct bx_cr0_t {
 #define BX_CR4_OSFXSR_MASK     (1 << 9)
 #define BX_CR4_OSXMMEXCPT_MASK (1 << 10)
 #define BX_CR4_UMIP_MASK       (1 << 11)
+#define BX_CR4_LA57_MASK       (1 << 12)
 #define BX_CR4_VMXE_MASK       (1 << 13)
 #define BX_CR4_SMXE_MASK       (1 << 14)
 #define BX_CR4_FSGSBASE_MASK   (1 << 16)
 #define BX_CR4_PCIDE_MASK      (1 << 17)
 #define BX_CR4_OSXSAVE_MASK    (1 << 18)
+#define BX_CR4_KEYLOCKER_MASK  (1 << 19)
 #define BX_CR4_SMEP_MASK       (1 << 20)
 #define BX_CR4_SMAP_MASK       (1 << 21)
 #define BX_CR4_PKE_MASK        (1 << 22)
+#define BX_CR4_CET_MASK        (1 << 23)
+#define BX_CR4_PKS_MASK        (1 << 24)
 
 struct bx_cr4_t {
   Bit32u  val32; // 32bit value of register
@@ -124,6 +128,7 @@ struct bx_cr4_t {
   IMPLEMENT_CRREG_ACCESSORS(OSFXSR, 9);
   IMPLEMENT_CRREG_ACCESSORS(OSXMMEXCPT, 10);
   IMPLEMENT_CRREG_ACCESSORS(UMIP, 11);
+  IMPLEMENT_CRREG_ACCESSORS(LA57, 12);
 #if BX_SUPPORT_VMX
   IMPLEMENT_CRREG_ACCESSORS(VMXE, 13);
 #endif
@@ -133,16 +138,18 @@ struct bx_cr4_t {
 #endif
   IMPLEMENT_CRREG_ACCESSORS(PCIDE, 17);
   IMPLEMENT_CRREG_ACCESSORS(OSXSAVE, 18);
+  IMPLEMENT_CRREG_ACCESSORS(KEYLOCKER, 19);
   IMPLEMENT_CRREG_ACCESSORS(SMEP, 20);
   IMPLEMENT_CRREG_ACCESSORS(SMAP, 21);
   IMPLEMENT_CRREG_ACCESSORS(PKE, 22);
+  IMPLEMENT_CRREG_ACCESSORS(CET, 23);
+  IMPLEMENT_CRREG_ACCESSORS(PKS, 24);
 
   BX_CPP_INLINE Bit32u get32() const { return val32; }
   BX_CPP_INLINE void set32(Bit32u val) { val32 = val; }
 };
 
-#define BX_CR4_FLUSH_TLB_MASK \
-   (BX_CR4_PSE_MASK | BX_CR4_PAE_MASK | BX_CR4_PGE_MASK | BX_CR4_PCIDE_MASK | BX_CR4_SMEP_MASK | BX_CR4_SMAP_MASK | BX_CR4_PKE_MASK)
+const Bit32u BX_CR4_FLUSH_TLB_MASK = (BX_CR4_PSE_MASK | BX_CR4_PAE_MASK | BX_CR4_PGE_MASK | BX_CR4_PCIDE_MASK | BX_CR4_SMEP_MASK | BX_CR4_SMAP_MASK | BX_CR4_PKE_MASK | BX_CR4_CET_MASK | BX_CR4_PKS_MASK);
 
 #endif  // #if BX_CPU_LEVEL >= 5
 
@@ -237,19 +244,22 @@ struct bx_efer_t {
 
 #if BX_CPU_LEVEL >= 6
 
-#define XSAVE_SSE_STATE_LEN           (256)
-#define XSAVE_YMM_STATE_LEN           (256)
-#define XSAVE_OPMASK_STATE_LEN         (64)
-#define XSAVE_ZMM_HI256_STATE_LEN     (512)
-#define XSAVE_HI_ZMM_STATE_LEN       (1024)
-#define XSAVE_PKRU_STATE_LEN           (64)
+const unsigned XSAVE_FPU_STATE_LEN          = 160;
+const unsigned XSAVE_SSE_STATE_LEN          = 256;
+const unsigned XSAVE_YMM_STATE_LEN          = 256;
+const unsigned XSAVE_OPMASK_STATE_LEN       = 64;
+const unsigned XSAVE_ZMM_HI256_STATE_LEN    = 512;
+const unsigned XSAVE_HI_ZMM_STATE_LEN       = 1024;
+const unsigned XSAVE_PKRU_STATE_LEN         = 64;
+const unsigned XSAVE_CET_U_STATE_LEN        = 16;
+const unsigned XSAVE_CET_S_STATE_LEN        = 24;
 
-#define XSAVE_SSE_STATE_OFFSET        (160)
-#define XSAVE_YMM_STATE_OFFSET        (576)
-#define XSAVE_OPMASK_STATE_OFFSET    (1088)
-#define XSAVE_ZMM_HI256_STATE_OFFSET (1152)
-#define XSAVE_HI_ZMM_STATE_OFFSET    (1664)
-#define XSAVE_PKRU_STATE_OFFSET      (2688)
+const unsigned XSAVE_SSE_STATE_OFFSET       = 160;
+const unsigned XSAVE_YMM_STATE_OFFSET       = 576;
+const unsigned XSAVE_OPMASK_STATE_OFFSET    = 1088;
+const unsigned XSAVE_ZMM_HI256_STATE_OFFSET = 1152;
+const unsigned XSAVE_HI_ZMM_STATE_OFFSET    = 1664;
+const unsigned XSAVE_PKRU_STATE_OFFSET      = 2688;
 
 struct xcr0_t {
   Bit32u  val32; // 32bit value of register
@@ -264,7 +274,13 @@ struct xcr0_t {
     BX_XCR0_ZMM_HI256_BIT = 6,
     BX_XCR0_HI_ZMM_BIT = 7,
     BX_XCR0_PT_BIT = 8,
-    BX_XCR0_PKRU_BIT = 9
+    BX_XCR0_PKRU_BIT = 9,
+    BX_XCR0_CET_U_BIT = 11,
+    BX_XCR0_CET_S_BIT = 12,
+    BX_XCR0_UINTR_BIT = 14,
+    BX_XCR0_XTILECFG_BIT = 17,
+    BX_XCR0_XTILEDATA_BIT = 18,
+    BX_XCR0_LAST
   };
 
 #define BX_XCR0_FPU_MASK       (1 << xcr0_t::BX_XCR0_FPU_BIT)
@@ -277,6 +293,11 @@ struct xcr0_t {
 #define BX_XCR0_HI_ZMM_MASK    (1 << xcr0_t::BX_XCR0_HI_ZMM_BIT)
 #define BX_XCR0_PT_MASK        (1 << xcr0_t::BX_XCR0_PT_BIT)
 #define BX_XCR0_PKRU_MASK      (1 << xcr0_t::BX_XCR0_PKRU_BIT)
+#define BX_XCR0_CET_U_MASK     (1 << xcr0_t::BX_XCR0_CET_U_BIT)
+#define BX_XCR0_CET_S_MASK     (1 << xcr0_t::BX_XCR0_CET_S_BIT)
+#define BX_XCR0_UINTR_MASK     (1 << xcr0_t::BX_XCR0_UINTR_BIT)
+#define BX_XCR0_XTILECFG_MASK  (1 << xcr0_t::BX_XCR0_XTILECFG_BIT)
+#define BX_XCR0_XTILEDATA_MASK (1 << xcr0_t::BX_XCR0_XTILEDATA_BIT)
 
   IMPLEMENT_CRREG_ACCESSORS(FPU, BX_XCR0_FPU_BIT);
   IMPLEMENT_CRREG_ACCESSORS(SSE, BX_XCR0_SSE_BIT);
@@ -288,10 +309,36 @@ struct xcr0_t {
   IMPLEMENT_CRREG_ACCESSORS(HI_ZMM, BX_XCR0_HI_ZMM_BIT);
   IMPLEMENT_CRREG_ACCESSORS(PT, BX_XCR0_PT_BIT);
   IMPLEMENT_CRREG_ACCESSORS(PKRU, BX_XCR0_PKRU_BIT);
+  IMPLEMENT_CRREG_ACCESSORS(CET_U, BX_XCR0_CET_U_BIT);
+  IMPLEMENT_CRREG_ACCESSORS(CET_S, BX_XCR0_CET_S_BIT);
+  IMPLEMENT_CRREG_ACCESSORS(XTILECFG, BX_XCR0_XTILECFG_BIT);
+  IMPLEMENT_CRREG_ACCESSORS(XTILEDATA, BX_XCR0_XTILEDATA_BIT);
 
   BX_CPP_INLINE Bit32u get32() const { return val32; }
   BX_CPP_INLINE void set32(Bit32u val) { val32 = val; }
 };
+
+#if BX_USE_CPU_SMF
+typedef bx_bool (*XSaveStateInUsePtr_tR)(void);
+typedef void (*XSavePtr_tR)(bxInstruction_c *i, bx_address offset);
+typedef void (*XRestorPtr_tR)(bxInstruction_c *i, bx_address offset);
+typedef void (*XRestorInitPtr_tR)(void);
+#else
+typedef bx_bool (BX_CPU_C::*XSaveStateInUsePtr_tR)(void);
+typedef void (BX_CPU_C::*XSavePtr_tR)(bxInstruction_c *i, bx_address offset);
+typedef void (BX_CPU_C::*XRestorPtr_tR)(bxInstruction_c *i, bx_address offset);
+typedef void (BX_CPU_C::*XRestorInitPtr_tR)(void);
+#endif
+
+struct XSaveRestoreStateHelper {
+  unsigned len;
+  unsigned offset;
+  XSaveStateInUsePtr_tR xstate_in_use_method;
+  XSavePtr_tR xsave_method;
+  XRestorPtr_tR xrstor_method;
+  XRestorInitPtr_tR xrstor_init_method;
+};
+
 #endif
 
 #undef IMPLEMENT_CRREG_ACCESSORS

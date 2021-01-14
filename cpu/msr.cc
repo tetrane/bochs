@@ -1,8 +1,8 @@
 /////////////////////////////////////////////////////////////////////////
-// $Id: msr.cc 13118 2017-03-15 21:44:15Z sshwarts $
+// $Id: msr.cc 13869 2020-05-29 12:35:30Z sshwarts $
 /////////////////////////////////////////////////////////////////////////
 //
-//   Copyright (c) 2008-2017 Stanislav Shwartsman
+//   Copyright (c) 2008-2019 Stanislav Shwartsman
 //          Written by Stanislav Shwartsman [sshwarts at sourceforge net]
 //
 //  This library is free software; you can redistribute it and/or
@@ -24,7 +24,12 @@
 #define NEED_CPU_REG_SHORTCUTS 1
 #include "bochs.h"
 #include "cpu.h"
+#include "msr.h"
 #define LOG_THIS BX_CPU_THIS_PTR
+
+#if BX_SUPPORT_CET
+extern bx_bool is_invalid_cet_control(bx_address val);
+#endif
 
 #if BX_CPU_LEVEL >= 5
 bx_bool BX_CPP_AttrRegparmN(2) BX_CPU_C::rdmsr(Bit32u index, Bit64u *msr)
@@ -33,7 +38,7 @@ bx_bool BX_CPP_AttrRegparmN(2) BX_CPU_C::rdmsr(Bit32u index, Bit64u *msr)
 
 #if BX_CPU_LEVEL >= 6
   if (is_cpu_extension_supported(BX_ISA_X2APIC)) {
-    if (index >= 0x800 && index <= 0xBFF) {
+    if (is_x2apic_msr_range(index)) {
       if (BX_CPU_THIS_PTR msr.apicbase & 0x400)  // X2APIC mode
         return BX_CPU_THIS_PTR lapic.read_x2apic(index, msr);
       else
@@ -43,7 +48,6 @@ bx_bool BX_CPP_AttrRegparmN(2) BX_CPU_C::rdmsr(Bit32u index, Bit64u *msr)
 #endif
 
   switch(index) {
-
 #if BX_CPU_LEVEL >= 6
     case BX_MSR_SYSENTER_CS:
       if (! is_cpu_extension_supported(BX_ISA_SYSENTER_SYSEXIT)) {
@@ -152,6 +156,17 @@ bx_bool BX_CPP_AttrRegparmN(2) BX_CPU_C::rdmsr(Bit32u index, Bit64u *msr)
 
     case BX_MSR_TSC:
       val64 = BX_CPU_THIS_PTR get_TSC();
+#if BX_SUPPORT_SVM || BX_SUPPORT_VMX
+      val64 = BX_CPU_THIS_PTR get_TSC_VMXAdjust(val64);
+#endif
+      break;
+
+    case BX_MSR_TSC_ADJUST:
+      if (! is_cpu_extension_supported(BX_ISA_TSC_ADJUST)) {
+        BX_ERROR(("RDMSR BX_MSR_TSC_ADJUST: TSC_ADJUST is not enabled in the cpu model"));
+        return handle_unknown_rdmsr(index, msr);
+      }
+      val64 = BX_CPU_THIS_PTR tsc_adjust;
       break;
 
 #if BX_SUPPORT_APIC
@@ -163,7 +178,47 @@ bx_bool BX_CPP_AttrRegparmN(2) BX_CPU_C::rdmsr(Bit32u index, Bit64u *msr)
 
 #if BX_CPU_LEVEL >= 6
     case BX_MSR_XSS:
-      val64 = BX_CPU_THIS_PTR msr.msr_xss;
+      val64 = BX_CPU_THIS_PTR msr.ia32_xss;
+      break;
+#endif
+
+#if BX_SUPPORT_CET
+    case BX_MSR_IA32_U_CET:
+    case BX_MSR_IA32_S_CET:
+      if (! is_cpu_extension_supported(BX_ISA_CET)) {
+        BX_ERROR(("RDMSR BX_MSR_IA32_U_CET/BX_MSR_IA32_S_CET: CET not enabled in the cpu model"));
+        return handle_unknown_rdmsr(index, msr);
+      }
+      val64 = BX_CPU_THIS_PTR msr.ia32_cet_control[index == BX_MSR_IA32_U_CET];
+      break;
+
+    case BX_MSR_IA32_PL0_SSP:
+    case BX_MSR_IA32_PL1_SSP:
+    case BX_MSR_IA32_PL2_SSP:
+    case BX_MSR_IA32_PL3_SSP:
+      if (! is_cpu_extension_supported(BX_ISA_CET)) {
+        BX_ERROR(("RDMSR BX_MSR_IA32_PLi_SSP: CET not enabled in the cpu model"));
+        return handle_unknown_rdmsr(index, msr);
+      }
+      val64 = BX_CPU_THIS_PTR msr.ia32_pl_ssp[index - BX_MSR_IA32_PL0_SSP];
+      break;
+
+    case BX_MSR_IA32_INTERRUPT_SSP_TABLE_ADDR:
+      if (! is_cpu_extension_supported(BX_ISA_CET)) {
+        BX_ERROR(("RDMSR BX_MSR_IA32_INTERRUPT_SSP_TABLE_ADDR: CET not enabled in the cpu model"));
+        return handle_unknown_rdmsr(index, msr);
+      }
+      val64 = BX_CPU_THIS_PTR msr.ia32_interrupt_ssp_table;
+      break;
+#endif
+
+#if BX_SUPPORT_PKEYS
+    case BX_MSR_IA32_PKRS:
+      if (! is_cpu_extension_supported(BX_ISA_PKS)) {
+        BX_ERROR(("RDMSR BX_MSR_IS32_PKS: Supervisor-Mode Protection Keys not enabled in the cpu model"));
+        return handle_unknown_rdmsr(index, msr);
+      }
+      val64 = BX_CPU_THIS_PTR pkrs;
       break;
 #endif
 
@@ -176,6 +231,49 @@ bx_bool BX_CPP_AttrRegparmN(2) BX_CPU_C::rdmsr(Bit32u index, Bit64u *msr)
       val64 = BX_CPU_THIS_PTR lapic.get_tsc_deadline();
       break;
 #endif
+
+    // SCA preention MSRs
+    case BX_MSR_IA32_ARCH_CAPABILITIES:
+      if (! is_cpu_extension_supported(BX_ISA_SCA_MITIGATIONS)) {
+        BX_ERROR(("RDMSR IA32_ARCH_CAPABILITIES: not enabled in the cpu model"));
+        return handle_unknown_rdmsr(index, msr);
+      }
+      //     [0]: RDCL_NO: The processor is not susceptible to Rogue Data Cache Load (RDCL)
+      //     [1]: IBRS_ALL: The processor supports enhanced IBRS
+      //     [2]: RSBA: The processor supports RSB Alternate
+      //     [3]: SKIP_L1DFL_VMENTRY: indicates the hypervisor need not flush the L1D on VM entry
+      //     [4]: SSB_NO: Processor is not susceptible to Speculative Store Bypass
+      //  [63:5]: reserved
+      val64 = 0x1F; // set bits [4:0]
+      break;
+
+    case BX_MSR_IA32_SPEC_CTRL:
+      if (! is_cpu_extension_supported(BX_ISA_SCA_MITIGATIONS)) {
+        BX_ERROR(("WRMSR IA32_SPEC_CTRL: not enabled in the cpu model"));
+        return handle_unknown_rdmsr(index, msr);
+      }
+      //    [0] - Enable IBRS: Indirect Branch Restricted Speculation
+      //    [1] - Enable STIBP: Single Thread Indirect Branch Predictors
+      //    [2] - Enable SSCB: Speculative Store Bypass Disable
+      // [63:3] - reserved
+      val64 = BX_CPU_THIS_PTR msr.ia32_spec_ctrl;
+      break;
+
+    case BX_MSR_IA32_PRED_CMD:
+      if (! is_cpu_extension_supported(BX_ISA_SCA_MITIGATIONS)) {
+        BX_ERROR(("WRMSR IA32_PRED_CMD: not enabled in the cpu model"));
+        return handle_unknown_rdmsr(index, msr);
+      }
+      // write only MSR, no need to remember written value
+      return 0;
+
+    case BX_MSR_IA32_FLUSH_CMD:
+      if (! is_cpu_extension_supported(BX_ISA_SCA_MITIGATIONS)) {
+        BX_ERROR(("WRMSR IA32_FLUSH_CMD: not enabled in the cpu model"));
+        return handle_unknown_rdmsr(index, msr);
+      }
+      // write only MSR, no need to remember written value
+      return 0;
 
 #if BX_SUPPORT_VMX
 /*
@@ -379,7 +477,7 @@ bx_bool BX_CPP_AttrRegparmN(2) BX_CPU_C::handle_unknown_rdmsr(Bit32u index, Bit6
 
 #endif // BX_CPU_LEVEL >= 5
 
-BX_INSF_TYPE BX_CPP_AttrRegparmN(1) BX_CPU_C::RDMSR(bxInstruction_c *i)
+void BX_CPP_AttrRegparmN(1) BX_CPU_C::RDMSR(bxInstruction_c *i)
 {
 #if BX_CPU_LEVEL >= 5
   // CPL is always 0 in real mode
@@ -436,9 +534,9 @@ bx_bool isMemTypeValidMTRR(unsigned memtype)
   case BX_MEMTYPE_WT:
   case BX_MEMTYPE_WP:
   case BX_MEMTYPE_WB:
-    return BX_TRUE;
+    return true;
   default:
-    return BX_FALSE;
+    return false;
   }
 }
 
@@ -452,9 +550,9 @@ bx_bool isValidMSR_PAT(Bit64u pat_val)
   // use packed register as 64-bit value with convinient accessors
   BxPackedRegister pat_msr = pat_val;
   for (unsigned i=0; i<8; i++)
-    if (! isMemTypeValidPAT(pat_msr.ubyte(i))) return BX_FALSE;
+    if (! isMemTypeValidPAT(pat_msr.ubyte(i))) return false;
 
-  return BX_TRUE;
+  return true;
 }
 
 bx_bool isValidMSR_FixedMTRR(Bit64u fixed_mtrr_val)
@@ -462,9 +560,9 @@ bx_bool isValidMSR_FixedMTRR(Bit64u fixed_mtrr_val)
   // use packed register as 64-bit value with convinient accessors
   BxPackedRegister fixed_mtrr_msr = fixed_mtrr_val;
   for (unsigned i=0; i<8; i++)
-    if (! isMemTypeValidMTRR(fixed_mtrr_msr.ubyte(i))) return BX_FALSE;
+    if (! isMemTypeValidMTRR(fixed_mtrr_msr.ubyte(i))) return false;
 
-  return BX_TRUE;
+  return true;
 }
 #endif
 
@@ -480,7 +578,7 @@ bx_bool BX_CPP_AttrRegparmN(2) BX_CPU_C::wrmsr(Bit32u index, Bit64u val_64)
 
 #if BX_CPU_LEVEL >= 6
   if (is_cpu_extension_supported(BX_ISA_X2APIC)) {
-    if (index >= 0x800 && index <= 0xBFF) {
+    if (is_x2apic_msr_range(index)) {
       if (BX_CPU_THIS_PTR msr.apicbase & 0x400)  // X2APIC mode
         return BX_CPU_THIS_PTR lapic.write_x2apic(index, val32_hi, val32_lo);
       else
@@ -617,7 +715,7 @@ bx_bool BX_CPP_AttrRegparmN(2) BX_CPU_C::wrmsr(Bit32u index, Bit64u val_64)
         return handle_unknown_wrmsr(index, val_64);
       }
       if (! isValidMSR_FixedMTRR(val_64)) {
-        BX_ERROR(("WRMSR: attempt to write invalid Memory Type to MSR_MTRRFIX16K regsiter !"));
+        BX_ERROR(("WRMSR: attempt to write invalid Memory Type to MSR_MTRRFIX16K register !"));
         return 0;
       }
       BX_CPU_THIS_PTR msr.mtrrfix16k[index - BX_MSR_MTRRFIX16K_80000] = val_64;
@@ -678,6 +776,14 @@ bx_bool BX_CPP_AttrRegparmN(2) BX_CPU_C::wrmsr(Bit32u index, Bit64u val_64)
       BX_CPU_THIS_PTR set_TSC(val_64);
       break;
 
+    case BX_MSR_TSC_ADJUST:
+      if (! is_cpu_extension_supported(BX_ISA_TSC_ADJUST)) {
+        BX_ERROR(("WRMSR BX_MSR_TSC_ADJUST: TSC_ADJUST is not enabled in the cpu model"));
+        return handle_unknown_wrmsr(index, val_64);
+      }
+      BX_CPU_THIS_PTR tsc_adjust = (Bit64s) val_64;
+      break;
+
 #if BX_SUPPORT_APIC
     case BX_MSR_APICBASE:
       return relocate_apic(val_64);
@@ -685,12 +791,76 @@ bx_bool BX_CPP_AttrRegparmN(2) BX_CPU_C::wrmsr(Bit32u index, Bit64u val_64)
 
 #if BX_CPU_LEVEL >= 6
     case BX_MSR_XSS:
-      if (! is_cpu_extension_supported(BX_ISA_XSAVES)) {
-        BX_ERROR(("WRMSR BX_MSR_XSS: XSAVES not enabled in the cpu model"));
+      {
+        if (! is_cpu_extension_supported(BX_ISA_XSAVES)) {
+          BX_ERROR(("WRMSR BX_MSR_XSS: XSAVES not enabled in the cpu model"));
+          return handle_unknown_wrmsr(index, val_64);
+        }
+        Bit32u xss_suport_mask = get_ia32_xss_allow_mask();
+        if (val_64 & ~Bit64u(xss_suport_mask)) {
+          BX_ERROR(("WRMSR: attempt to set reserved/not supported bit in BX_MSR_XSS"));
+          return 0;
+        }
+        BX_CPU_THIS_PTR msr.ia32_xss = val_64;
+        break;
+      }
+#endif
+
+#if BX_SUPPORT_CET
+    case BX_MSR_IA32_U_CET:
+    case BX_MSR_IA32_S_CET:
+      if (! is_cpu_extension_supported(BX_ISA_CET)) {
+        BX_ERROR(("WRMSR BX_MSR_IA32_U_CET/BX_MSR_IA32_S_CET: CET not enabled in the cpu model"));
         return handle_unknown_wrmsr(index, val_64);
       }
-      BX_ERROR(("WRMSR: attempt to set reserved bit in BX_MSR_XSS"));
-      return 0;
+      if (! IsCanonical(val_64) || is_invalid_cet_control(val_64)) {
+        BX_ERROR(("WRMSR: attempt to write non-canonical or invalid value to BX_MSR_IA32_U_CET/BX_MSR_IA32_S_CET !"));
+        return 0;
+      }
+      BX_CPU_THIS_PTR msr.ia32_cet_control[index == BX_MSR_IA32_U_CET] = val_64;
+      break;
+
+    case BX_MSR_IA32_PL0_SSP:
+    case BX_MSR_IA32_PL1_SSP:
+    case BX_MSR_IA32_PL2_SSP:
+    case BX_MSR_IA32_PL3_SSP:
+      if (! is_cpu_extension_supported(BX_ISA_CET)) {
+        BX_ERROR(("WRMSR BX_MSR_IA32_PLi_SSP: CET not enabled in the cpu model"));
+        return handle_unknown_wrmsr(index, val_64);
+      }
+      if (! IsCanonical(val_64)) {
+        BX_ERROR(("WRMSR: attempt to write non-canonical value to BX_MSR_IA32_PLi_SSP !"));
+        return 0;
+      }
+      if (val_64 & 0x03) {
+        BX_ERROR(("WRMSR: attempt to write non 4byte-aligned address to BX_MSR_IA32_PLi_SSP !"));
+        return 0;
+      }
+      BX_CPU_THIS_PTR msr.ia32_pl_ssp[index - BX_MSR_IA32_PL0_SSP] = val_64;
+      break;
+
+    case BX_MSR_IA32_INTERRUPT_SSP_TABLE_ADDR:
+      if (! is_cpu_extension_supported(BX_ISA_CET)) {
+        BX_ERROR(("WRMSR BX_MSR_IA32_INTERRUPT_SSP_TABLE_ADDR: CET not enabled in the cpu model"));
+        return handle_unknown_wrmsr(index, val_64);
+      }
+      if (! IsCanonical(val_64)) {
+        BX_ERROR(("WRMSR: attempt to write non-canonical value to BX_MSR_IA32_INTERRUPT_SSP_TABLE_ADDR !"));
+        return 0;
+      }
+      BX_CPU_THIS_PTR msr.ia32_interrupt_ssp_table = val_64;
+      break;
+#endif
+
+#if BX_SUPPORT_PKEYS
+    case BX_MSR_IA32_PKRS:
+      if (! is_cpu_extension_supported(BX_ISA_PKS)) {
+        BX_ERROR(("WRMSR BX_MSR_IS32_PKS: Supervisor-Mode Protection Keys not enabled in the cpu model"));
+        return handle_unknown_wrmsr(index, val_64);
+      }
+      BX_CPU_THIS_PTR pkrs = val_64;
+      set_PKeys(BX_CPU_THIS_PTR pkru, BX_CPU_THIS_PTR pkrs);
+      break;
 #endif
 
 #if BX_CPU_LEVEL >= 6
@@ -702,6 +872,59 @@ bx_bool BX_CPP_AttrRegparmN(2) BX_CPU_C::wrmsr(Bit32u index, Bit64u val_64)
       BX_CPU_THIS_PTR lapic.set_tsc_deadline(val_64);
       break;
 #endif
+
+    // SCA preention MSRs
+    case BX_MSR_IA32_ARCH_CAPABILITIES:
+      if (! is_cpu_extension_supported(BX_ISA_SCA_MITIGATIONS)) {
+        BX_ERROR(("WRMSR IA32_ARCH_CAPABILITIES: not enabled in the cpu model"));
+        return handle_unknown_wrmsr(index, val_64);
+      }
+      BX_ERROR(("WRMSR: IA32_ARCH_CAPABILITIES is read only MSR"));
+      return 0;
+
+    case BX_MSR_IA32_SPEC_CTRL:
+      if (! is_cpu_extension_supported(BX_ISA_SCA_MITIGATIONS)) {
+        BX_ERROR(("WRMSR IA32_SPEC_CTRL: not enabled in the cpu model"));
+        return handle_unknown_wrmsr(index, val_64);
+      }
+      //    [0] - Enable IBRS: Indirect Branch Restricted Speculation
+      //    [1] - Enable STIBP: Single Thread Indirect Branch Predictors
+      //    [2] - Enable SSCB: Speculative Store Bypass Disable
+      // [63:3] - reserved
+      if (val_64 & ~(BX_CONST64(0x7))) {
+        BX_ERROR(("WRMSR: attempt to set reserved bits of IA32_SPEC_CTRL !"));
+        return 0;
+      }
+      BX_CPU_THIS_PTR msr.ia32_spec_ctrl = val32_lo;
+      break;
+
+    case BX_MSR_IA32_PRED_CMD:
+      if (! is_cpu_extension_supported(BX_ISA_SCA_MITIGATIONS)) {
+        BX_ERROR(("WRMSR IA32_PRED_CMD: not enabled in the cpu model"));
+        return handle_unknown_wrmsr(index, val_64);
+      }
+      //    [0] - Indirect Branch Prediction Barrier (IBPB)
+      // [63:1] - reserved
+      if (val_64 & ~(BX_CONST64(0x1))) {
+        BX_ERROR(("WRMSR: attempt to set reserved bits of IA32_PRED_CMD !"));
+        return 0;
+      }
+      // write only MSR, no need to remember written value
+      break;
+
+    case BX_MSR_IA32_FLUSH_CMD:
+      if (! is_cpu_extension_supported(BX_ISA_SCA_MITIGATIONS)) {
+        BX_ERROR(("WRMSR IA32_FLUSH_CMD: not enabled in the cpu model"));
+        return handle_unknown_wrmsr(index, val_64);
+      }
+      //    [0] - WBINVD DL1 Cache
+      // [63:1] - reserved
+      if (val_64 & ~(BX_CONST64(0x1))) {
+        BX_ERROR(("WRMSR: attempt to set reserved bits of IA32_FLUSH_CMD !"));
+        return 0;
+      }
+      // write only MSR, no need to remember written value
+      break;
 
 #if BX_SUPPORT_VMX
     // Support only two bits: lock bit (bit 0) and VMX enable (bit 2)
@@ -837,7 +1060,7 @@ bx_bool BX_CPP_AttrRegparmN(2) BX_CPU_C::wrmsr(Bit32u index, Bit64u val_64)
 
     case BX_MSR_TSC_AUX:
       if (! is_cpu_extension_supported(BX_ISA_RDTSCP)) {
-        BX_ERROR(("WRMSR MSR_TSC_AUX: RTDSCP feature not enabled in the cpu model"));
+        BX_ERROR(("WRMSR MSR_TSC_AUX: RDTSCP feature not enabled in the cpu model"));
         return handle_unknown_wrmsr(index, val_64);
       }
       BX_CPU_THIS_PTR msr.tsc_aux = val32_lo;
@@ -938,7 +1161,7 @@ bx_bool BX_CPU_C::relocate_apic(Bit64u val_64)
 }
 #endif
 
-BX_INSF_TYPE BX_CPP_AttrRegparmN(1) BX_CPU_C::WRMSR(bxInstruction_c *i)
+void BX_CPP_AttrRegparmN(1) BX_CPU_C::WRMSR(bxInstruction_c *i)
 {
 #if BX_CPU_LEVEL >= 5
   // CPL is always 0 in real mode

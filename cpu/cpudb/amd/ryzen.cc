@@ -1,5 +1,5 @@
 /////////////////////////////////////////////////////////////////////////
-// $Id: ryzen.cc 13153 2017-03-26 20:12:14Z sshwarts $
+// $Id: ryzen.cc 14062 2021-01-02 16:28:51Z sshwarts $
 /////////////////////////////////////////////////////////////////////////
 //
 //   Copyright (c) 2012-2017 Stanislav Shwartsman
@@ -211,18 +211,11 @@ Bit32u ryzen_t::get_svm_extensions_bitmask(void) const
 // leaf 0x00000000 //
 void ryzen_t::get_std_cpuid_leaf_0(cpuid_function_t *leaf) const
 {
-  static const char* vendor_string = "AuthenticAMD";
-
   // EAX: highest std function understood by CPUID
   // EBX: vendor ID string
   // EDX: vendor ID string
   // ECX: vendor ID string
-  unsigned max_leaf = 0xD;
-  static bx_bool cpuid_limit_winnt = SIM->get_param_bool(BXPN_CPUID_LIMIT_WINNT)->get();
-  if (cpuid_limit_winnt)
-    max_leaf = 0x1;
-
-  get_leaf_0(max_leaf, vendor_string, leaf);
+  get_leaf_0(0xD, "AuthenticAMD", leaf, 0x1);
 }
 
 // leaf 0x00000001 //
@@ -356,8 +349,11 @@ void ryzen_t::get_std_cpuid_leaf_1(cpuid_function_t *leaf) const
               BX_CPUID_STD_MMX |
               BX_CPUID_STD_FXSAVE_FXRSTOR |
               BX_CPUID_STD_SSE |
-              BX_CPUID_STD_SSE2 |
-              BX_CPUID_STD_HT;
+              BX_CPUID_STD_SSE2
+#if BX_SUPPORT_SMP
+              | BX_CPUID_STD_HT
+#endif
+              ;
 #if BX_SUPPORT_APIC
   // if MSR_APICBASE APIC Global Enable bit has been cleared,
   // the CPUID feature flag for the APIC is set to 0.
@@ -536,8 +532,11 @@ void ryzen_t::get_ext_cpuid_leaf_1(cpuid_function_t *leaf) const
               BX_CPUID_EXT2_PERFCTR_EXT_CORE |
               BX_CPUID_EXT2_PERFCTR_EXT_NB |
               BX_CPUID_EXT2_DATA_BREAKPOINT_EXT |
-              BX_CPUID_EXT2_PERFCTR_EXT_L2I;
-           /* BX_CPUID_EXT2_MONITORX_MWAITX - not implemented yet */
+              BX_CPUID_EXT2_PERFCTR_EXT_L2I |
+#if BX_SUPPORT_MONITOR_MWAIT
+              BX_CPUID_EXT2_MONITORX_MWAITX |
+#endif
+              0;
 
   // EDX:
   // Many of the bits in EDX are the same as FN 0x00000001 for AMD

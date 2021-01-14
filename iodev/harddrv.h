@@ -1,8 +1,8 @@
 /////////////////////////////////////////////////////////////////////////
-// $Id: harddrv.h 12810 2015-08-23 07:04:56Z vruppert $
+// $Id: harddrv.h 14020 2020-12-12 12:32:26Z vruppert $
 /////////////////////////////////////////////////////////////////////////
 //
-//  Copyright (C) 2001-2015  The Bochs Project
+//  Copyright (C) 2001-2020  The Bochs Project
 //
 //  This library is free software; you can redistribute it and/or
 //  modify it under the terms of the GNU Lesser General Public
@@ -75,7 +75,8 @@ typedef struct {
     Bit16u   cylinder_no;
     Bit16u   byte_count;
   };
-  Bit8u    buffer[MAX_MULTIPLE_SECTORS*512 + 4];
+  Bit8u    *buffer;
+  Bit32u   buffer_total_size;
   Bit32u   buffer_size;
   Bit32u   buffer_index;
   Bit32u   drq_index;
@@ -127,7 +128,6 @@ struct error_recovery_t {
 Bit16u read_16bit(const Bit8u* buf) BX_CPP_AttrRegparmN(1);
 Bit32u read_32bit(const Bit8u* buf) BX_CPP_AttrRegparmN(1);
 
-
 struct cdrom_t
 {
   bx_bool ready;
@@ -169,9 +169,6 @@ public:
   virtual ~bx_hard_drive_c();
   virtual void     init();
   virtual void     reset(unsigned type);
-  virtual Bit32u   get_first_cd_handle(void);
-  virtual bx_bool  get_cd_media_status(Bit32u handle);
-  virtual bx_bool  set_cd_media_status(Bit32u handle, bx_bool status);
 #if BX_SUPPORT_PCI
   virtual bx_bool  bmdma_read_sector(Bit8u channel, Bit8u *buffer, Bit32u *sector_size);
   virtual bx_bool  bmdma_write_sector(Bit8u channel, Bit8u *buffer);
@@ -223,6 +220,8 @@ private:
   BX_HD_SMF void lba48_transform(controller_t *controller, bx_bool lba48);
   BX_HD_SMF void start_seek(Bit8u channel);
 
+  BX_HD_SMF bx_bool set_cd_media_status(Bit32u handle, bx_bool status);
+
   static Bit64s cdrom_status_handler(bx_param_c *param, int set, Bit64s val);
   static const char* cdrom_path_handler(bx_param_string_c *param, int set,
                                         const char *oldval, const char *val, int maxlen);
@@ -248,6 +247,7 @@ private:
       device_image_t* hdimage;
       Bit64s curr_lsector;
       Bit64s next_lsector;
+      unsigned sect_size;
 
       Bit8u model_no[41];
       int statusbar_id;

@@ -1,8 +1,8 @@
 /////////////////////////////////////////////////////////////////////////
-// $Id: extplugin.h 13241 2017-05-28 08:13:06Z vruppert $
+// $Id: extplugin.h 14064 2021-01-02 20:49:39Z vruppert $
 /////////////////////////////////////////////////////////////////////////
 //
-// Copyright (C) 2002-2017  The Bochs Project
+// Copyright (C) 2002-2021  The Bochs Project
 //
 // extplugin.h
 //
@@ -28,14 +28,17 @@
 #endif
 
 enum plugintype_t {
-  PLUGTYPE_GUI=100,
+  PLUGTYPE_DEV=0,
   PLUGTYPE_CORE,
+  PLUGTYPE_VGA,
   PLUGTYPE_STANDARD,
   PLUGTYPE_OPTIONAL,
-  PLUGTYPE_SOUND,
-  PLUGTYPE_NETWORK,
-  PLUGTYPE_USBDEV,
-  PLUGTYPE_USER
+  PLUGTYPE_USER,
+  PLUGTYPE_GUI=0x100,
+  PLUGTYPE_IMG=0x200,
+  PLUGTYPE_NET=0x300,
+  PLUGTYPE_SND=0x400,
+  PLUGTYPE_USB=0x500
 };
 
 typedef int (CDECL *plugin_init_t)(struct _plugin_t *plugin, plugintype_t type);
@@ -44,7 +47,8 @@ typedef void (CDECL *plugin_fini_t)(void);
 typedef struct _plugin_t
 {
     plugintype_t type;
-    int  initialized;
+    bx_bool loaded;
+    bx_bool initialized;
 #if BX_PLUGINS
 #if defined(WIN32)
     HINSTANCE handle;

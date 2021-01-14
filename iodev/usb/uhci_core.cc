@@ -1,9 +1,9 @@
 /////////////////////////////////////////////////////////////////////////
-// $Id: uhci_core.cc 13284 2017-08-26 08:10:21Z vruppert $
+// $Id: uhci_core.cc 13997 2020-11-03 18:54:29Z vruppert $
 /////////////////////////////////////////////////////////////////////////
 //
 //  Copyright (C) 2009-2017  Benjamin D Lunt (fys [at] fysnet [dot] net)
-//                2009-2017  The Bochs Project
+//                2009-2020  The Bochs Project
 //
 //  This library is free software; you can redistribute it and/or
 //  modify it under the terms of the GNU Lesser General Public
@@ -57,7 +57,7 @@
 //#define UHCI_FULL_DEBUG
 
 const Bit8u uhci_iomask[32] = {2, 1, 2, 1, 2, 1, 2, 0, 4, 0, 0, 0, 1, 0, 0, 0,
-                              3, 1, 3, 1, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+                               3, 1, 3, 1, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
 // the device object
 
@@ -78,16 +78,15 @@ void bx_uhci_core_c::init_uhci(Bit8u devfunc, Bit16u devid, Bit8u headt, Bit8u i
   // Call our timer routine every 1mS (1,000uS)
   // Continuous and active
   hub.timer_index =
-    DEV_register_timer(this, uhci_timer_handler, 1000, 1,1, "usb.timer");
+    DEV_register_timer(this, uhci_timer_handler, 1000, 1, 1, "usb.timer");
 
   hub.devfunc = devfunc;
   DEV_register_pci_handlers(this, &hub.devfunc, BX_PLUGIN_USB_UHCI,
                             "USB UHCI");
 
   // initialize readonly registers
-  init_pci_conf(0x8086, devid, 0x01, 0x0c0300, headt);
-  pci_conf[0x3d] = intp;
-  pci_base_address[4] = 0x0;
+  init_pci_conf(0x8086, devid, 0x01, 0x0c0300, headt, intp);
+  init_bar_io(4, 32, read_handler, write_handler, &uhci_iomask[0]);
 
   for (int i=0; i<USB_UHCI_PORTS; i++) {
     hub.usb_port[i].device = NULL;
@@ -169,7 +168,7 @@ void bx_uhci_core_c::reset_uhci(unsigned type)
   }
 }
 
-void bx_uhci_core_c::register_state(bx_list_c *parent)
+void bx_uhci_core_c::uhci_register_state(bx_list_c *parent)
 {
   unsigned j;
   char portnum[8];
@@ -227,13 +226,7 @@ void bx_uhci_core_c::register_state(bx_list_c *parent)
 
 void bx_uhci_core_c::after_restore_state(void)
 {
-  if (DEV_pci_set_base_io(this, read_handler, write_handler,
-                         &pci_base_address[4],
-                         &pci_conf[0x20],
-                         32, &uhci_iomask[0], "USB UHCI Hub"))
-  {
-     BX_INFO(("new base address: 0x%04x", pci_base_address[4]));
-  }
+  bx_pci_device_c::after_restore_pci_state(NULL);
   for (int j=0; j<USB_UHCI_PORTS; j++) {
     if (hub.usb_port[j].device != NULL) {
       hub.usb_port[j].device->after_restore_state();
@@ -272,7 +265,12 @@ Bit32u bx_uhci_core_c::read(Bit32u address, unsigned io_len)
   Bit32u val = 0x0;
   Bit8u  offset,port;
 
-  offset = address - pci_base_address[4];
+  // if the host driver has not cleared the reset bit, do nothing (reads are
+  // undefined)
+  if (hub.usb_command.reset)
+    return 0;
+
+  offset = address - pci_bar[4].addr;
 
   switch (offset) {
     case 0x00: // command register (16-bit)
@@ -314,8 +312,8 @@ Bit32u bx_uhci_core_c::read(Bit32u address, unsigned io_len)
       val = hub.usb_sof.sof_timing;
       break;
 
-    case 0x14: // port #3 non existant, but linux systems check it to see if there are more than 2
-      BX_ERROR(("read from non existant offset 0x14 (port #3)"));
+    case 0x14: // port #3 non existent, but linux systems check it to see if there are more than 2
+      BX_ERROR(("read from non existent offset 0x14 (port #3)"));
       val = 0xFF7F;
       break;
 
@@ -364,11 +362,16 @@ void bx_uhci_core_c::write_handler(void *this_ptr, Bit32u address, Bit32u value,
 
 void bx_uhci_core_c::write(Bit32u address, Bit32u value, unsigned io_len)
 {
-  Bit8u  offset,port;
+  Bit8u offset, port;
+
+  offset = address - pci_bar[4].addr;
+
+  // if the reset bit is not cleared and this write is not clearing the bit,
+  // do nothing
+  if (hub.usb_command.reset && ((offset != 0) || (value & 0x04)))
+    return;
 
   BX_DEBUG(("register write to  address 0x%04X:  0x%08X (%2i bits)", (unsigned) address, (unsigned) value, io_len * 8));
-
-  offset = address - pci_base_address[4];
 
   switch (offset) {
     case 0x00: // command register (16-bit) (R/W)
@@ -495,8 +498,8 @@ void bx_uhci_core_c::write(Bit32u address, Bit32u value, unsigned io_len)
        hub.usb_sof.sof_timing = value;
        break;
 
-    case 0x14: // port #3 non existant, but linux systems check it to see if there are more than 2
-      BX_ERROR(("write to non existant offset 0x14 (port #3)"));
+    case 0x14: // port #3 non existent, but linux systems check it to see if there are more than 2
+      BX_ERROR(("write to non existent offset 0x14 (port #3)"));
       break;
 
     case 0x10: // port #1
@@ -649,10 +652,10 @@ void bx_uhci_core_c::uhci_timer(void)
           bx_bool depthbreadth = (td.dword0 & 0x0004) ? 1 : 0;     // 1 = depth first, 0 = breadth first
           stack[stk].q = (td.dword0 & 0x0002) ? 1 : 0;
           stack[stk].t = (td.dword0 & 0x0001) ? 1 : 0;
-          if (td.dword1 & (1<<24)) interrupt = 1;
           if (td.dword1 & (1<<23)) {  // is it an active TD
             BX_DEBUG(("Frame: %04i (0x%04X)", hub.usb_frame_num.frame_num, hub.usb_frame_num.frame_num));
             if (DoTransfer(address, queue_num, &td)) {
+              if (td.dword1 & (1<<24)) interrupt = 1;
               // issue short packet?
               Bit16u r_actlen = (((td.dword1 & 0x7FF)+1) & 0x7FF);
               Bit16u r_maxlen = (((td.dword2>>21)+1) & 0x7FF);
@@ -828,6 +831,7 @@ bx_bool bx_uhci_core_c::DoTransfer(Bit32u address, Bit32u queue_num, struct TD *
         ret = broadcast_packet(&p->packet);
         break;
       default:
+        remove_async_packet(&packets, p);
         hub.usb_status.host_error = 1;
         update_irq();
         return 0;
@@ -899,16 +903,14 @@ void bx_uhci_core_c::set_status(struct TD *td, bx_bool stalled, bx_bool data_buf
 // pci configuration space write callback handler
 void bx_uhci_core_c::pci_write_handler(Bit8u address, Bit32u value, unsigned io_len)
 {
-  Bit8u value8, oldval;
-  bx_bool baseaddr_change = 0;
-
   if (((address >= 0x10) && (address < 0x20)) ||
       ((address > 0x23) && (address < 0x34)))
     return;
 
+  BX_DEBUG_PCI_WRITE(address, value, io_len);
   for (unsigned i=0; i<io_len; i++) {
-    value8 = (value >> (i*8)) & 0xFF;
-    oldval = pci_conf[address+i];
+    Bit8u value8 = (value >> (i*8)) & 0xFF;
+//  Bit8u oldval = pci_conf[address+i];
     switch (address+i) {
       case 0x04:
         value8 &= 0x05;
@@ -920,37 +922,10 @@ void bx_uhci_core_c::pci_write_handler(Bit8u address, Bit32u value, unsigned io_
       case 0x05: // disallowing write to command hi-byte
       case 0x06: // disallowing write to status lo-byte (is that expected?)
         break;
-      case 0x3c:
-        if (value8 != oldval) {
-          BX_INFO(("new irq line = %d", value8));
-          pci_conf[address+i] = value8;
-        }
-        break;
-      case 0x20:
-        value8 = (value8 & 0xfc) | 0x01;
-      case 0x21:
-      case 0x22:
-      case 0x23:
-        baseaddr_change |= (value8 != oldval);
       default:
         pci_conf[address+i] = value8;
     }
   }
-  if (baseaddr_change) {
-    if (DEV_pci_set_base_io(this, read_handler, write_handler,
-                            &pci_base_address[4],
-                            &pci_conf[0x20],
-                            32, &uhci_iomask[0], "USB UHCI Hub")) {
-      BX_INFO(("new base address: 0x%04x", pci_base_address[4]));
-    }
-  }
-
-  if (io_len == 1)
-    BX_DEBUG(("write PCI register 0x%02x value 0x%02x", address, value));
-  else if (io_len == 2)
-    BX_DEBUG(("write PCI register 0x%02x value 0x%04x", address, value));
-  else if (io_len == 4)
-    BX_DEBUG(("write PCI register 0x%02x value 0x%08x", address, value));
 }
 
 const char *usb_speed[4] = {

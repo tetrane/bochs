@@ -1,8 +1,8 @@
 /////////////////////////////////////////////////////////////////////////
-// $Id: svm.cc 12848 2015-09-30 18:45:01Z sshwarts $
+// $Id: svm.cc 13729 2019-12-27 13:02:30Z sshwarts $
 /////////////////////////////////////////////////////////////////////////
 //
-//   Copyright (c) 2011-2015 Stanislav Shwartsman
+//   Copyright (c) 2011-2018 Stanislav Shwartsman
 //          Written by Stanislav Shwartsman [sshwarts at sourceforge net]
 //
 //  This library is free software; you can redistribute it and/or
@@ -28,8 +28,9 @@
 
 #if BX_SUPPORT_SVM
 
-// for debugging and save/restore
-static const char *svm_segname[] = { "ES", "CS", "SS", "DS", "FS", "GS", "GDTR", "LDTR", "IDTR", "TR" };
+#include "decoder/ia_opcodes.h"
+
+extern const char *segname[];
 
 // When loading segment bases from the VMCB or the host save area
 // (on VMRUN or #VMEXIT), segment bases are canonicalized (i.e.
@@ -68,7 +69,7 @@ BX_CPP_INLINE Bit16u BX_CPU_C::vmcb_read16(unsigned offset)
 
   if (BX_CPU_THIS_PTR vmcbhostptr) {
     Bit16u *hostAddr = (Bit16u*) (BX_CPU_THIS_PTR vmcbhostptr | offset);
-    ReadHostWordFromLittleEndian(hostAddr, val_16);
+    val_16 = ReadHostWordFromLittleEndian(hostAddr);
   }
   else {
     access_read_physical(pAddr, 2, (Bit8u*)(&val_16));
@@ -85,7 +86,7 @@ BX_CPP_INLINE Bit32u BX_CPU_C::vmcb_read32(unsigned offset)
 
   if (BX_CPU_THIS_PTR vmcbhostptr) {
     Bit32u *hostAddr = (Bit32u*) (BX_CPU_THIS_PTR vmcbhostptr | offset);
-    ReadHostDWordFromLittleEndian(hostAddr, val_32);
+    val_32 = ReadHostDWordFromLittleEndian(hostAddr);
   }
   else {
     access_read_physical(pAddr, 4, (Bit8u*)(&val_32));
@@ -102,7 +103,7 @@ BX_CPP_INLINE Bit64u BX_CPU_C::vmcb_read64(unsigned offset)
 
   if (BX_CPU_THIS_PTR vmcbhostptr) {
     Bit64u *hostAddr = (Bit64u*) (BX_CPU_THIS_PTR vmcbhostptr | offset);
-    ReadHostQWordFromLittleEndian(hostAddr, val_64);
+    val_64 = ReadHostQWordFromLittleEndian(hostAddr);
   }
   else {
     access_read_physical(pAddr, 8, (Bit8u*)(&val_64));
@@ -950,7 +951,7 @@ void BX_CPU_C::SvmInterceptPAUSE(void)
 
 #endif
 
-BX_INSF_TYPE BX_CPP_AttrRegparmN(1) BX_CPU_C::VMRUN(bxInstruction_c *i)
+void BX_CPP_AttrRegparmN(1) BX_CPU_C::VMRUN(bxInstruction_c *i)
 {
 #if BX_SUPPORT_SVM
   if (! protected_mode() || ! BX_CPU_THIS_PTR efer.get_SVME())
@@ -1010,7 +1011,7 @@ BX_INSF_TYPE BX_CPP_AttrRegparmN(1) BX_CPU_C::VMRUN(bxInstruction_c *i)
   BX_NEXT_TRACE(i);
 }
 
-BX_INSF_TYPE BX_CPP_AttrRegparmN(1) BX_CPU_C::VMMCALL(bxInstruction_c *i)
+void BX_CPP_AttrRegparmN(1) BX_CPU_C::VMMCALL(bxInstruction_c *i)
 {
 #if BX_SUPPORT_SVM
   if (BX_CPU_THIS_PTR efer.get_SVME()) {
@@ -1025,7 +1026,7 @@ BX_INSF_TYPE BX_CPP_AttrRegparmN(1) BX_CPU_C::VMMCALL(bxInstruction_c *i)
   BX_NEXT_TRACE(i);
 }
 
-BX_INSF_TYPE BX_CPP_AttrRegparmN(1) BX_CPU_C::VMLOAD(bxInstruction_c *i)
+void BX_CPP_AttrRegparmN(1) BX_CPU_C::VMLOAD(bxInstruction_c *i)
 {
 #if BX_SUPPORT_SVM
   if (! protected_mode() || ! BX_CPU_THIS_PTR efer.get_SVME())
@@ -1076,7 +1077,7 @@ BX_INSF_TYPE BX_CPP_AttrRegparmN(1) BX_CPU_C::VMLOAD(bxInstruction_c *i)
   BX_NEXT_INSTR(i);
 }
 
-BX_INSF_TYPE BX_CPP_AttrRegparmN(1) BX_CPU_C::VMSAVE(bxInstruction_c *i)
+void BX_CPP_AttrRegparmN(1) BX_CPU_C::VMSAVE(bxInstruction_c *i)
 {
 #if BX_SUPPORT_SVM
   if (! protected_mode() || ! BX_CPU_THIS_PTR efer.get_SVME())
@@ -1120,7 +1121,7 @@ BX_INSF_TYPE BX_CPP_AttrRegparmN(1) BX_CPU_C::VMSAVE(bxInstruction_c *i)
   BX_NEXT_INSTR(i);
 }
 
-BX_INSF_TYPE BX_CPP_AttrRegparmN(1) BX_CPU_C::SKINIT(bxInstruction_c *i)
+void BX_CPP_AttrRegparmN(1) BX_CPU_C::SKINIT(bxInstruction_c *i)
 {
 #if BX_SUPPORT_SVM
   if (! protected_mode() || ! BX_CPU_THIS_PTR efer.get_SVME())
@@ -1141,7 +1142,7 @@ BX_INSF_TYPE BX_CPP_AttrRegparmN(1) BX_CPU_C::SKINIT(bxInstruction_c *i)
   BX_NEXT_TRACE(i);
 }
 
-BX_INSF_TYPE BX_CPP_AttrRegparmN(1) BX_CPU_C::CLGI(bxInstruction_c *i)
+void BX_CPP_AttrRegparmN(1) BX_CPU_C::CLGI(bxInstruction_c *i)
 {
 #if BX_SUPPORT_SVM
   if (! protected_mode() || ! BX_CPU_THIS_PTR efer.get_SVME())
@@ -1162,7 +1163,7 @@ BX_INSF_TYPE BX_CPP_AttrRegparmN(1) BX_CPU_C::CLGI(bxInstruction_c *i)
   BX_NEXT_TRACE(i);
 }
 
-BX_INSF_TYPE BX_CPP_AttrRegparmN(1) BX_CPU_C::STGI(bxInstruction_c *i)
+void BX_CPP_AttrRegparmN(1) BX_CPU_C::STGI(bxInstruction_c *i)
 {
 #if BX_SUPPORT_SVM
   if (! protected_mode() || ! BX_CPU_THIS_PTR efer.get_SVME())
@@ -1184,7 +1185,7 @@ BX_INSF_TYPE BX_CPP_AttrRegparmN(1) BX_CPU_C::STGI(bxInstruction_c *i)
   BX_NEXT_TRACE(i);
 }
 
-BX_INSF_TYPE BX_CPP_AttrRegparmN(1) BX_CPU_C::INVLPGA(bxInstruction_c *i)
+void BX_CPP_AttrRegparmN(1) BX_CPU_C::INVLPGA(bxInstruction_c *i)
 {
 #if BX_SUPPORT_SVM
   if (! protected_mode() || ! BX_CPU_THIS_PTR efer.get_SVME())
@@ -1251,7 +1252,7 @@ void BX_CPU_C::register_svm_state(bx_param_c *parent)
 
   for(unsigned n=0; n<4; n++) {
     bx_segment_reg_t *segment = &BX_CPU_THIS_PTR vmcb.host_state.sregs[n];
-    bx_list_c *sreg = new bx_list_c(host, svm_segname[n]);
+    bx_list_c *sreg = new bx_list_c(host, segname[n]);
     BXRS_HEX_PARAM_FIELD(sreg, selector, segment->selector.value);
     BXRS_HEX_PARAM_FIELD(sreg, valid, segment->cache.valid);
     BXRS_PARAM_BOOL(sreg, p, segment->cache.p);

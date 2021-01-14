@@ -1,8 +1,8 @@
 /////////////////////////////////////////////////////////////////////////
-// $Id: soundlow.cc 13249 2017-06-02 16:56:58Z vruppert $
+// $Id: soundlow.cc 14071 2021-01-08 19:04:41Z vruppert $
 /////////////////////////////////////////////////////////////////////////
 //
-//  Copyright (C) 2011-2017  The Bochs Project
+//  Copyright (C) 2011-2021  The Bochs Project
 //
 //  This library is free software; you can redistribute it and/or
 //  modify it under the terms of the GNU Lesser General Public
@@ -294,27 +294,26 @@ int bx_soundlow_waveout_c::set_pcm_params(bx_pcm_param_t *param)
 int bx_soundlow_waveout_c::sendwavepacket(int length, Bit8u data[], bx_pcm_param_t *src_param)
 {
   unsigned len1 = length;
-  audio_buffer_t *inbuffer, *outbuffer;
 
   if (src_param->bits == 16) len1 >>= 1;
   if (pcm_callback_id >= 0) {
     BX_LOCK(resampler_mutex);
-    inbuffer = audio_buffers[0]->new_buffer(len1);
+    audio_buffer_t *inbuffer = audio_buffers[0]->new_buffer(len1);
     memcpy(&inbuffer->param, src_param, sizeof(bx_pcm_param_t));
     convert_to_float(data, length, inbuffer);
     BX_UNLOCK(resampler_mutex);
   } else {
-    inbuffer = new audio_buffer_t;
+    audio_buffer_t *inbuffer = new audio_buffer_t;
     inbuffer->fdata = new float[len1];
     inbuffer->size = len1;
     memcpy(&inbuffer->param, src_param, sizeof(bx_pcm_param_t));
-    outbuffer = new audio_buffer_t;
+    audio_buffer_t *outbuffer = new audio_buffer_t;
     memset(outbuffer, 0, sizeof(audio_buffer_t));
     convert_to_float(data, length, inbuffer);
     resampler(inbuffer, outbuffer);
     output(outbuffer->size, outbuffer->data);
-    delete [] outbuffer;
-    delete [] inbuffer;
+    delete outbuffer;
+    delete inbuffer;
   }
   return BX_SOUNDLOW_OK;
 }
@@ -669,7 +668,7 @@ void bx_sound_lowlevel_c::cleanup()
 {
 #if BX_PLUGINS
   while (all != NULL) {
-    PLUG_unload_snd_plugin(all->type);
+    PLUG_unload_plugin_type(all->type, PLUGTYPE_SND);
   }
 #endif
 }

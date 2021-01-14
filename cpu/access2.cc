@@ -1,8 +1,8 @@
 /////////////////////////////////////////////////////////////////////////
-// $Id: access2.cc 13155 2017-03-28 18:52:53Z sshwarts $
+// $Id: access2.cc 13699 2019-12-20 07:42:07Z sshwarts $
 /////////////////////////////////////////////////////////////////////////
 //
-//   Copyright (c) 2008-2015 Stanislav Shwartsman
+//   Copyright (c) 2008-2019 Stanislav Shwartsman
 //          Written by Stanislav Shwartsman [sshwarts at sourceforge net]
 //
 //  This library is free software; you can redistribute it and/or
@@ -30,10 +30,9 @@
 BX_CPU_C::write_linear_byte(unsigned s, bx_address laddr, Bit8u data)
 {
   bx_address lpf = LPFOf(laddr);
-  bx_TLB_entry *tlbEntry = BX_TLB_ENTRY_OF(laddr, 0);
+  bx_TLB_entry *tlbEntry = BX_DTLB_ENTRY_OF(laddr, 0);
   if (tlbEntry->lpf == lpf) {
-    // See if the TLB entry privilege level allows us write access
-    // from this CPL.
+    // See if the TLB entry privilege level allows us write access from this CPL
     if (isWriteOK(tlbEntry, USER_PL)) {
       bx_hostpageaddr_t hostPageAddr = tlbEntry->hostPageAddr;
       Bit32u pageOffset = PAGE_OFFSET(laddr);
@@ -46,22 +45,21 @@ BX_CPU_C::write_linear_byte(unsigned s, bx_address laddr, Bit8u data)
     }
   }
 
-  if (access_write_linear(laddr, 1, CPL, 0x0, (void *) &data) < 0)
+  if (access_write_linear(laddr, 1, CPL, BX_WRITE, 0x0, (void *) &data) < 0)
     exception(int_number(s), 0);
 }
 
   void BX_CPP_AttrRegparmN(3)
 BX_CPU_C::write_linear_word(unsigned s, bx_address laddr, Bit16u data)
 {
-  bx_TLB_entry *tlbEntry = BX_TLB_ENTRY_OF(laddr, 1);
+  bx_TLB_entry *tlbEntry = BX_DTLB_ENTRY_OF(laddr, 1);
 #if BX_SUPPORT_ALIGNMENT_CHECK && BX_CPU_LEVEL >= 4
   bx_address lpf = AlignedAccessLPFOf(laddr, (1 & BX_CPU_THIS_PTR alignment_check_mask));
 #else
   bx_address lpf = LPFOf(laddr);
 #endif    
   if (tlbEntry->lpf == lpf) {
-    // See if the TLB entry privilege level allows us write access
-    // from this CPL.
+    // See if the TLB entry privilege level allows us write access from this CPL
     if (isWriteOK(tlbEntry, USER_PL)) {
       bx_hostpageaddr_t hostPageAddr = tlbEntry->hostPageAddr;
       Bit32u pageOffset = PAGE_OFFSET(laddr);
@@ -74,22 +72,21 @@ BX_CPU_C::write_linear_word(unsigned s, bx_address laddr, Bit16u data)
     }
   }
 
-  if (access_write_linear(laddr, 2, CPL, 0x1, (void *) &data) < 0)
+  if (access_write_linear(laddr, 2, CPL, BX_WRITE, 0x1, (void *) &data) < 0)
     exception(int_number(s), 0);
 }
 
   void BX_CPP_AttrRegparmN(3)
 BX_CPU_C::write_linear_dword(unsigned s, bx_address laddr, Bit32u data)
 {
-  bx_TLB_entry *tlbEntry = BX_TLB_ENTRY_OF(laddr, 3);
+  bx_TLB_entry *tlbEntry = BX_DTLB_ENTRY_OF(laddr, 3);
 #if BX_SUPPORT_ALIGNMENT_CHECK && BX_CPU_LEVEL >= 4
   bx_address lpf = AlignedAccessLPFOf(laddr, (3 & BX_CPU_THIS_PTR alignment_check_mask));
 #else
   bx_address lpf = LPFOf(laddr);
 #endif    
   if (tlbEntry->lpf == lpf) {
-    // See if the TLB entry privilege level allows us write access
-    // from this CPL.
+    // See if the TLB entry privilege level allows us write access from this CPL
     if (isWriteOK(tlbEntry, USER_PL)) {
       bx_hostpageaddr_t hostPageAddr = tlbEntry->hostPageAddr;
       Bit32u pageOffset = PAGE_OFFSET(laddr);
@@ -102,22 +99,21 @@ BX_CPU_C::write_linear_dword(unsigned s, bx_address laddr, Bit32u data)
     }
   }
 
-  if (access_write_linear(laddr, 4, CPL, 0x3, (void *) &data) < 0)
+  if (access_write_linear(laddr, 4, CPL, BX_WRITE, 0x3, (void *) &data) < 0)
     exception(int_number(s), 0);
 }
 
   void BX_CPP_AttrRegparmN(3)
 BX_CPU_C::write_linear_qword(unsigned s, bx_address laddr, Bit64u data)
 {
-  bx_TLB_entry *tlbEntry = BX_TLB_ENTRY_OF(laddr, 7);
+  bx_TLB_entry *tlbEntry = BX_DTLB_ENTRY_OF(laddr, 7);
 #if BX_SUPPORT_ALIGNMENT_CHECK && BX_CPU_LEVEL >= 4
   bx_address lpf = AlignedAccessLPFOf(laddr, (7 & BX_CPU_THIS_PTR alignment_check_mask));
 #else
   bx_address lpf = LPFOf(laddr);
 #endif    
   if (tlbEntry->lpf == lpf) {
-    // See if the TLB entry privilege level allows us write access
-    // from this CPL.
+    // See if the TLB entry privilege level allows us write access from this CPL
     if (isWriteOK(tlbEntry, USER_PL)) {
       bx_hostpageaddr_t hostPageAddr = tlbEntry->hostPageAddr;
       Bit32u pageOffset = PAGE_OFFSET(laddr);
@@ -130,7 +126,7 @@ BX_CPU_C::write_linear_qword(unsigned s, bx_address laddr, Bit64u data)
     }
   }
 
-  if (access_write_linear(laddr, 8, CPL, 0x7, (void *) &data) < 0)
+  if (access_write_linear(laddr, 8, CPL, BX_WRITE, 0x7, (void *) &data) < 0)
     exception(int_number(s), 0);
 }
 
@@ -140,10 +136,9 @@ BX_CPU_C::write_linear_qword(unsigned s, bx_address laddr, Bit64u data)
 BX_CPU_C::write_linear_xmmword(unsigned s, bx_address laddr, const BxPackedXmmRegister *data)
 {
   bx_address lpf = LPFOf(laddr);
-  bx_TLB_entry *tlbEntry = BX_TLB_ENTRY_OF(laddr, 15);
+  bx_TLB_entry *tlbEntry = BX_DTLB_ENTRY_OF(laddr, 15);
   if (tlbEntry->lpf == lpf) {
-    // See if the TLB entry privilege level allows us write access
-    // from this CPL.
+    // See if the TLB entry privilege level allows us write access from this CPL
     if (isWriteOK(tlbEntry, USER_PL)) {
       bx_hostpageaddr_t hostPageAddr = tlbEntry->hostPageAddr;
       Bit32u pageOffset = PAGE_OFFSET(laddr);
@@ -157,7 +152,7 @@ BX_CPU_C::write_linear_xmmword(unsigned s, bx_address laddr, const BxPackedXmmRe
     }
   }
 
-  if (access_write_linear(laddr, 16, CPL, 0x0, (void *) data) < 0)
+  if (access_write_linear(laddr, 16, CPL, BX_WRITE, 0x0, (void *) data) < 0)
     exception(int_number(s), 0);
 }
 
@@ -165,10 +160,9 @@ BX_CPU_C::write_linear_xmmword(unsigned s, bx_address laddr, const BxPackedXmmRe
 BX_CPU_C::write_linear_xmmword_aligned(unsigned s, bx_address laddr, const BxPackedXmmRegister *data)
 {
   bx_address lpf = AlignedAccessLPFOf(laddr, 15);
-  bx_TLB_entry *tlbEntry = BX_TLB_ENTRY_OF(laddr, 0);
+  bx_TLB_entry *tlbEntry = BX_DTLB_ENTRY_OF(laddr, 0);
   if (tlbEntry->lpf == lpf) {
-    // See if the TLB entry privilege level allows us write access
-    // from this CPL.
+    // See if the TLB entry privilege level allows us write access from this CPL
     if (isWriteOK(tlbEntry, USER_PL)) {
       bx_hostpageaddr_t hostPageAddr = tlbEntry->hostPageAddr;
       Bit32u pageOffset = PAGE_OFFSET(laddr);
@@ -187,19 +181,17 @@ BX_CPU_C::write_linear_xmmword_aligned(unsigned s, bx_address laddr, const BxPac
     exception(BX_GP_EXCEPTION, 0);
   }
 
-  if (access_write_linear(laddr, 16, CPL, 0x0, (void *) data) < 0)
+  if (access_write_linear(laddr, 16, CPL, BX_WRITE, 0x0, (void *) data) < 0)
     exception(int_number(s), 0);
 }
 
-#if BX_SUPPORT_AVX
   void BX_CPP_AttrRegparmN(3)
 BX_CPU_C::write_linear_ymmword(unsigned s, bx_address laddr, const BxPackedYmmRegister *data)
 {
   bx_address lpf = LPFOf(laddr);
-  bx_TLB_entry *tlbEntry = BX_TLB_ENTRY_OF(laddr, 31);
+  bx_TLB_entry *tlbEntry = BX_DTLB_ENTRY_OF(laddr, 31);
   if (tlbEntry->lpf == lpf) {
-    // See if the TLB entry privilege level allows us write access
-    // from this CPL.
+    // See if the TLB entry privilege level allows us write access from this CPL
     if (isWriteOK(tlbEntry, USER_PL)) {
       bx_hostpageaddr_t hostPageAddr = tlbEntry->hostPageAddr;
       Bit32u pageOffset = PAGE_OFFSET(laddr);
@@ -214,7 +206,7 @@ BX_CPU_C::write_linear_ymmword(unsigned s, bx_address laddr, const BxPackedYmmRe
     }
   }
 
-  if (access_write_linear(laddr, 32, CPL, 0x0, (void *) data) < 0)
+  if (access_write_linear(laddr, 32, CPL, BX_WRITE, 0x0, (void *) data) < 0)
     exception(int_number(s), 0);
 }
 
@@ -222,10 +214,9 @@ BX_CPU_C::write_linear_ymmword(unsigned s, bx_address laddr, const BxPackedYmmRe
 BX_CPU_C::write_linear_ymmword_aligned(unsigned s, bx_address laddr, const BxPackedYmmRegister *data)
 {
   bx_address lpf = AlignedAccessLPFOf(laddr, 31);
-  bx_TLB_entry *tlbEntry = BX_TLB_ENTRY_OF(laddr, 0);
+  bx_TLB_entry *tlbEntry = BX_DTLB_ENTRY_OF(laddr, 0);
   if (tlbEntry->lpf == lpf) {
-    // See if the TLB entry privilege level allows us write access
-    // from this CPL.
+    // See if the TLB entry privilege level allows us write access from this CPL
     if (isWriteOK(tlbEntry, USER_PL)) {
       bx_hostpageaddr_t hostPageAddr = tlbEntry->hostPageAddr;
       Bit32u pageOffset = PAGE_OFFSET(laddr);
@@ -245,20 +236,17 @@ BX_CPU_C::write_linear_ymmword_aligned(unsigned s, bx_address laddr, const BxPac
     exception(BX_GP_EXCEPTION, 0);
   }
 
-  if (access_write_linear(laddr, 32, CPL, 0x0, (void *) data) < 0)
+  if (access_write_linear(laddr, 32, CPL, BX_WRITE, 0x0, (void *) data) < 0)
     exception(int_number(s), 0);
 }
-#endif
 
-#if BX_SUPPORT_EVEX
   void BX_CPP_AttrRegparmN(3)
 BX_CPU_C::write_linear_zmmword(unsigned s, bx_address laddr, const BxPackedZmmRegister *data)
 {
   bx_address lpf = LPFOf(laddr);
-  bx_TLB_entry *tlbEntry = BX_TLB_ENTRY_OF(laddr, 63);
+  bx_TLB_entry *tlbEntry = BX_DTLB_ENTRY_OF(laddr, 63);
   if (tlbEntry->lpf == lpf) {
-    // See if the TLB entry privilege level allows us write access
-    // from this CPL.
+    // See if the TLB entry privilege level allows us write access from this CPL
     if (isWriteOK(tlbEntry, USER_PL)) {
       bx_hostpageaddr_t hostPageAddr = tlbEntry->hostPageAddr;
       Bit32u pageOffset = PAGE_OFFSET(laddr);
@@ -273,7 +261,7 @@ BX_CPU_C::write_linear_zmmword(unsigned s, bx_address laddr, const BxPackedZmmRe
     }
   }
 
-  if (access_write_linear(laddr, 64, CPL, 0x0, (void *) data) < 0)
+  if (access_write_linear(laddr, 64, CPL, BX_WRITE, 0x0, (void *) data) < 0)
     exception(int_number(s), 0);
 }
 
@@ -281,10 +269,9 @@ BX_CPU_C::write_linear_zmmword(unsigned s, bx_address laddr, const BxPackedZmmRe
 BX_CPU_C::write_linear_zmmword_aligned(unsigned s, bx_address laddr, const BxPackedZmmRegister *data)
 {
   bx_address lpf = AlignedAccessLPFOf(laddr, 63);
-  bx_TLB_entry *tlbEntry = BX_TLB_ENTRY_OF(laddr, 0);
+  bx_TLB_entry *tlbEntry = BX_DTLB_ENTRY_OF(laddr, 0);
   if (tlbEntry->lpf == lpf) {
-    // See if the TLB entry privilege level allows us write access
-    // from this CPL.
+    // See if the TLB entry privilege level allows us write access from this CPL
     if (isWriteOK(tlbEntry, USER_PL)) {
       bx_hostpageaddr_t hostPageAddr = tlbEntry->hostPageAddr;
       Bit32u pageOffset = PAGE_OFFSET(laddr);
@@ -304,10 +291,9 @@ BX_CPU_C::write_linear_zmmword_aligned(unsigned s, bx_address laddr, const BxPac
     exception(BX_GP_EXCEPTION, 0);
   }
 
-  if (access_write_linear(laddr, 64, CPL, 0x0, (void *) data) < 0)
+  if (access_write_linear(laddr, 64, CPL, BX_WRITE, 0x0, (void *) data) < 0)
     exception(int_number(s), 0);
 }
-#endif
 
 #endif
 
@@ -315,10 +301,9 @@ BX_CPU_C::write_linear_zmmword_aligned(unsigned s, bx_address laddr, const BxPac
 BX_CPU_C::tickle_read_linear(unsigned s, bx_address laddr)
 {
   bx_address lpf = LPFOf(laddr);
-  bx_TLB_entry *tlbEntry = BX_TLB_ENTRY_OF(laddr, 0);
+  bx_TLB_entry *tlbEntry = BX_DTLB_ENTRY_OF(laddr, 0);
   if (tlbEntry->lpf == lpf) {
-    // See if the TLB entry privilege level allows us read access
-    // from this CPL.
+    // See if the TLB entry privilege level allows us read access from this CPL
     if (isReadOK(tlbEntry, USER_PL)) return;
   }
 
@@ -347,10 +332,9 @@ BX_CPU_C::read_linear_byte(unsigned s, bx_address laddr)
   Bit8u data;
 
   bx_address lpf = LPFOf(laddr);
-  bx_TLB_entry *tlbEntry = BX_TLB_ENTRY_OF(laddr, 0);
+  bx_TLB_entry *tlbEntry = BX_DTLB_ENTRY_OF(laddr, 0);
   if (tlbEntry->lpf == lpf) {
-    // See if the TLB entry privilege level allows us read access
-    // from this CPL.
+    // See if the TLB entry privilege level allows us read access from this CPL
     if (isReadOK(tlbEntry, USER_PL)) {
       bx_hostpageaddr_t hostPageAddr = tlbEntry->hostPageAddr;
       Bit32u pageOffset = PAGE_OFFSET(laddr);
@@ -372,20 +356,19 @@ BX_CPU_C::read_linear_word(unsigned s, bx_address laddr)
 {
   Bit16u data;
 
-  bx_TLB_entry *tlbEntry = BX_TLB_ENTRY_OF(laddr, 1);
+  bx_TLB_entry *tlbEntry = BX_DTLB_ENTRY_OF(laddr, 1);
 #if BX_SUPPORT_ALIGNMENT_CHECK && BX_CPU_LEVEL >= 4
   bx_address lpf = AlignedAccessLPFOf(laddr, (1 & BX_CPU_THIS_PTR alignment_check_mask));
 #else
   bx_address lpf = LPFOf(laddr);
 #endif    
   if (tlbEntry->lpf == lpf) {
-    // See if the TLB entry privilege level allows us read access
-    // from this CPL.
+    // See if the TLB entry privilege level allows us read access from this CPL
     if (isReadOK(tlbEntry, USER_PL)) {
       bx_hostpageaddr_t hostPageAddr = tlbEntry->hostPageAddr;
       Bit32u pageOffset = PAGE_OFFSET(laddr);
       Bit16u *hostAddr = (Bit16u*) (hostPageAddr | pageOffset);
-      ReadHostWordFromLittleEndian(hostAddr, data);
+      data = ReadHostWordFromLittleEndian(hostAddr);
       BX_NOTIFY_LIN_MEMORY_ACCESS(laddr, (tlbEntry->ppf | pageOffset), 2, tlbEntry->get_memtype(), BX_READ, (Bit8u*) &data);
       return data;
     }
@@ -402,20 +385,19 @@ BX_CPU_C::read_linear_dword(unsigned s, bx_address laddr)
 {
   Bit32u data;
 
-  bx_TLB_entry *tlbEntry = BX_TLB_ENTRY_OF(laddr, 3);
+  bx_TLB_entry *tlbEntry = BX_DTLB_ENTRY_OF(laddr, 3);
 #if BX_SUPPORT_ALIGNMENT_CHECK && BX_CPU_LEVEL >= 4
   bx_address lpf = AlignedAccessLPFOf(laddr, (3 & BX_CPU_THIS_PTR alignment_check_mask));
 #else
   bx_address lpf = LPFOf(laddr);
 #endif    
   if (tlbEntry->lpf == lpf) {
-    // See if the TLB entry privilege level allows us read access
-    // from this CPL.
+    // See if the TLB entry privilege level allows us read access from this CPL
     if (isReadOK(tlbEntry, USER_PL)) {
       bx_hostpageaddr_t hostPageAddr = tlbEntry->hostPageAddr;
       Bit32u pageOffset = PAGE_OFFSET(laddr);
       Bit32u *hostAddr = (Bit32u*) (hostPageAddr | pageOffset);
-      ReadHostDWordFromLittleEndian(hostAddr, data);
+      data = ReadHostDWordFromLittleEndian(hostAddr);
       BX_NOTIFY_LIN_MEMORY_ACCESS(laddr, (tlbEntry->ppf | pageOffset), 4, tlbEntry->get_memtype(), BX_READ, (Bit8u*) &data);
       return data;
     }
@@ -432,20 +414,19 @@ BX_CPU_C::read_linear_qword(unsigned s, bx_address laddr)
 {
   Bit64u data;
 
-  bx_TLB_entry *tlbEntry = BX_TLB_ENTRY_OF(laddr, 7);
+  bx_TLB_entry *tlbEntry = BX_DTLB_ENTRY_OF(laddr, 7);
 #if BX_SUPPORT_ALIGNMENT_CHECK && BX_CPU_LEVEL >= 4
   bx_address lpf = AlignedAccessLPFOf(laddr, (7 & BX_CPU_THIS_PTR alignment_check_mask));
 #else
   bx_address lpf = LPFOf(laddr);
 #endif    
   if (tlbEntry->lpf == lpf) {
-    // See if the TLB entry privilege level allows us read access
-    // from this CPL.
+    // See if the TLB entry privilege level allows us read access from this CPL
     if (isReadOK(tlbEntry, USER_PL)) {
       bx_hostpageaddr_t hostPageAddr = tlbEntry->hostPageAddr;
       Bit32u pageOffset = PAGE_OFFSET(laddr);
       Bit64u *hostAddr = (Bit64u*) (hostPageAddr | pageOffset);
-      ReadHostQWordFromLittleEndian(hostAddr, data);
+      data = ReadHostQWordFromLittleEndian(hostAddr);
       BX_NOTIFY_LIN_MEMORY_ACCESS(laddr, (tlbEntry->ppf | pageOffset), 8, tlbEntry->get_memtype(), BX_READ, (Bit8u*) &data);
       return data;
     }
@@ -462,17 +443,16 @@ BX_CPU_C::read_linear_qword(unsigned s, bx_address laddr)
   void BX_CPP_AttrRegparmN(3)
 BX_CPU_C::read_linear_xmmword(unsigned s, bx_address laddr, BxPackedXmmRegister *data)
 {
-  bx_TLB_entry *tlbEntry = BX_TLB_ENTRY_OF(laddr, 15);
+  bx_TLB_entry *tlbEntry = BX_DTLB_ENTRY_OF(laddr, 15);
   bx_address lpf = LPFOf(laddr);
   if (tlbEntry->lpf == lpf) {
-    // See if the TLB entry privilege level allows us read access
-    // from this CPL.
+    // See if the TLB entry privilege level allows us read access from this CPL
     if (isReadOK(tlbEntry, USER_PL)) {
       bx_hostpageaddr_t hostPageAddr = tlbEntry->hostPageAddr;
       Bit32u pageOffset = PAGE_OFFSET(laddr);
       Bit64u *hostAddr = (Bit64u*) (hostPageAddr | pageOffset);
-      ReadHostQWordFromLittleEndian(hostAddr,   data->xmm64u(0));
-      ReadHostQWordFromLittleEndian(hostAddr+1, data->xmm64u(1));
+      data->xmm64u(0) = ReadHostQWordFromLittleEndian(hostAddr);
+      data->xmm64u(1) = ReadHostQWordFromLittleEndian(hostAddr+1);
       BX_NOTIFY_LIN_MEMORY_ACCESS(laddr, (tlbEntry->ppf | pageOffset), 16, tlbEntry->get_memtype(), BX_READ, (Bit8u*) data);
       return;
     }
@@ -486,16 +466,15 @@ BX_CPU_C::read_linear_xmmword(unsigned s, bx_address laddr, BxPackedXmmRegister 
 BX_CPU_C::read_linear_xmmword_aligned(unsigned s, bx_address laddr, BxPackedXmmRegister *data)
 {
   bx_address lpf = AlignedAccessLPFOf(laddr, 15);
-  bx_TLB_entry *tlbEntry = BX_TLB_ENTRY_OF(laddr, 0);
+  bx_TLB_entry *tlbEntry = BX_DTLB_ENTRY_OF(laddr, 0);
   if (tlbEntry->lpf == lpf) {
-    // See if the TLB entry privilege level allows us read access
-    // from this CPL.
+    // See if the TLB entry privilege level allows us read access from this CPL
     if (isReadOK(tlbEntry, USER_PL)) {
       bx_hostpageaddr_t hostPageAddr = tlbEntry->hostPageAddr;
       Bit32u pageOffset = PAGE_OFFSET(laddr);
       Bit64u *hostAddr = (Bit64u*) (hostPageAddr | pageOffset);
-      ReadHostQWordFromLittleEndian(hostAddr,   data->xmm64u(0));
-      ReadHostQWordFromLittleEndian(hostAddr+1, data->xmm64u(1));
+      data->xmm64u(0) = ReadHostQWordFromLittleEndian(hostAddr);
+      data->xmm64u(1) = ReadHostQWordFromLittleEndian(hostAddr+1);
       BX_NOTIFY_LIN_MEMORY_ACCESS(laddr, (tlbEntry->ppf | pageOffset), 16, tlbEntry->get_memtype(), BX_READ, (Bit8u*) data);
       return;
     }
@@ -510,21 +489,19 @@ BX_CPU_C::read_linear_xmmword_aligned(unsigned s, bx_address laddr, BxPackedXmmR
     exception(int_number(s), 0);
 }
 
-#if BX_SUPPORT_AVX
   void BX_CPP_AttrRegparmN(3)
 BX_CPU_C::read_linear_ymmword(unsigned s, bx_address laddr, BxPackedYmmRegister *data)
 {
-  bx_TLB_entry *tlbEntry = BX_TLB_ENTRY_OF(laddr, 31);
+  bx_TLB_entry *tlbEntry = BX_DTLB_ENTRY_OF(laddr, 31);
   bx_address lpf = LPFOf(laddr);
   if (tlbEntry->lpf == lpf) {
-    // See if the TLB entry privilege level allows us read access
-    // from this CPL.
+    // See if the TLB entry privilege level allows us read access from this CPL
     if (isReadOK(tlbEntry, USER_PL)) {
       bx_hostpageaddr_t hostPageAddr = tlbEntry->hostPageAddr;
       Bit32u pageOffset = PAGE_OFFSET(laddr);
       Bit64u *hostAddr = (Bit64u*) (hostPageAddr | pageOffset);
       for (unsigned n=0; n < 4; n++) {
-        ReadHostQWordFromLittleEndian(hostAddr+n, data->ymm64u(n));
+        data->ymm64u(n) = ReadHostQWordFromLittleEndian(hostAddr+n);
       }
       BX_NOTIFY_LIN_MEMORY_ACCESS(laddr, (tlbEntry->ppf | pageOffset), 32, tlbEntry->get_memtype(), BX_READ, (Bit8u*) data);
       return;
@@ -539,16 +516,15 @@ BX_CPU_C::read_linear_ymmword(unsigned s, bx_address laddr, BxPackedYmmRegister 
 BX_CPU_C::read_linear_ymmword_aligned(unsigned s, bx_address laddr, BxPackedYmmRegister *data)
 {
   bx_address lpf = AlignedAccessLPFOf(laddr, 31);
-  bx_TLB_entry *tlbEntry = BX_TLB_ENTRY_OF(laddr, 0);
+  bx_TLB_entry *tlbEntry = BX_DTLB_ENTRY_OF(laddr, 0);
   if (tlbEntry->lpf == lpf) {
-    // See if the TLB entry privilege level allows us read access
-    // from this CPL.
+    // See if the TLB entry privilege level allows us read access from this CPL
     if (isReadOK(tlbEntry, USER_PL)) {
       bx_hostpageaddr_t hostPageAddr = tlbEntry->hostPageAddr;
       Bit32u pageOffset = PAGE_OFFSET(laddr);
       Bit64u *hostAddr = (Bit64u*) (hostPageAddr | pageOffset);
       for (unsigned n=0; n < 4; n++) {
-        ReadHostQWordFromLittleEndian(hostAddr+n, data->ymm64u(n));
+        data->ymm64u(n) = ReadHostQWordFromLittleEndian(hostAddr+n);
       }
       BX_NOTIFY_LIN_MEMORY_ACCESS(laddr, (tlbEntry->ppf | pageOffset), 32, tlbEntry->get_memtype(), BX_READ, (Bit8u*) data);
       return;
@@ -563,23 +539,20 @@ BX_CPU_C::read_linear_ymmword_aligned(unsigned s, bx_address laddr, BxPackedYmmR
   if (access_read_linear(laddr, 32, CPL, BX_READ, 0x0, (void *) data) < 0)
     exception(int_number(s), 0);
 }
-#endif
 
-#if BX_SUPPORT_EVEX
   void BX_CPP_AttrRegparmN(3)
 BX_CPU_C::read_linear_zmmword(unsigned s, bx_address laddr, BxPackedZmmRegister *data)
 {
-  bx_TLB_entry *tlbEntry = BX_TLB_ENTRY_OF(laddr, 63);
+  bx_TLB_entry *tlbEntry = BX_DTLB_ENTRY_OF(laddr, 63);
   bx_address lpf = LPFOf(laddr);
   if (tlbEntry->lpf == lpf) {
-    // See if the TLB entry privilege level allows us read access
-    // from this CPL.
+    // See if the TLB entry privilege level allows us read access from this CPL
     if (isReadOK(tlbEntry, USER_PL)) {
       bx_hostpageaddr_t hostPageAddr = tlbEntry->hostPageAddr;
       Bit32u pageOffset = PAGE_OFFSET(laddr);
       Bit64u *hostAddr = (Bit64u*) (hostPageAddr | pageOffset);
       for (unsigned n=0; n < 8; n++) {
-        ReadHostQWordFromLittleEndian(hostAddr+n, data->zmm64u(n));
+        data->zmm64u(n) = ReadHostQWordFromLittleEndian(hostAddr+n);
       }
       BX_NOTIFY_LIN_MEMORY_ACCESS(laddr, (tlbEntry->ppf | pageOffset), 64, tlbEntry->get_memtype(), BX_READ, (Bit8u*) data);
       return;
@@ -594,16 +567,15 @@ BX_CPU_C::read_linear_zmmword(unsigned s, bx_address laddr, BxPackedZmmRegister 
 BX_CPU_C::read_linear_zmmword_aligned(unsigned s, bx_address laddr, BxPackedZmmRegister *data)
 {
   bx_address lpf = AlignedAccessLPFOf(laddr, 63);
-  bx_TLB_entry *tlbEntry = BX_TLB_ENTRY_OF(laddr, 0);
+  bx_TLB_entry *tlbEntry = BX_DTLB_ENTRY_OF(laddr, 0);
   if (tlbEntry->lpf == lpf) {
-    // See if the TLB entry privilege level allows us read access
-    // from this CPL.
+    // See if the TLB entry privilege level allows us read access from this CPL
     if (isReadOK(tlbEntry, USER_PL)) {
       bx_hostpageaddr_t hostPageAddr = tlbEntry->hostPageAddr;
       Bit32u pageOffset = PAGE_OFFSET(laddr);
       Bit64u *hostAddr = (Bit64u*) (hostPageAddr | pageOffset);
       for (unsigned n=0; n < 8; n++) {
-        ReadHostQWordFromLittleEndian(hostAddr+n, data->zmm64u(n));
+        data->zmm64u(n) = ReadHostQWordFromLittleEndian(hostAddr+n);
       }
       BX_NOTIFY_LIN_MEMORY_ACCESS(laddr, (tlbEntry->ppf | pageOffset), 64, tlbEntry->get_memtype(), BX_READ, (Bit8u*) data);
       return;
@@ -618,7 +590,6 @@ BX_CPU_C::read_linear_zmmword_aligned(unsigned s, bx_address laddr, BxPackedZmmR
   if (access_read_linear(laddr, 64, CPL, BX_READ, 0x0, (void *) data) < 0)
     exception(int_number(s), 0);
 }
-#endif
 
 #endif
 
@@ -632,10 +603,9 @@ BX_CPU_C::read_RMW_linear_byte(unsigned s, bx_address laddr)
 {
   Bit8u data;
   bx_address lpf = LPFOf(laddr);
-  bx_TLB_entry *tlbEntry = BX_TLB_ENTRY_OF(laddr, 0);
+  bx_TLB_entry *tlbEntry = BX_DTLB_ENTRY_OF(laddr, 0);
   if (tlbEntry->lpf == lpf) {
-    // See if the TLB entry privilege level allows us write access
-    // from this CPL.
+    // See if the TLB entry privilege level allows us write access from this CPL
     if (isWriteOK(tlbEntry, USER_PL)) {
       bx_hostpageaddr_t hostPageAddr = tlbEntry->hostPageAddr;
       Bit32u pageOffset = PAGE_OFFSET(laddr);
@@ -663,22 +633,21 @@ BX_CPU_C::read_RMW_linear_byte(unsigned s, bx_address laddr)
 BX_CPU_C::read_RMW_linear_word(unsigned s, bx_address laddr)
 {
   Bit16u data;
-  bx_TLB_entry *tlbEntry = BX_TLB_ENTRY_OF(laddr, 1);
+  bx_TLB_entry *tlbEntry = BX_DTLB_ENTRY_OF(laddr, 1);
 #if BX_SUPPORT_ALIGNMENT_CHECK && BX_CPU_LEVEL >= 4
   bx_address lpf = AlignedAccessLPFOf(laddr, (1 & BX_CPU_THIS_PTR alignment_check_mask));
 #else
   bx_address lpf = LPFOf(laddr);
 #endif    
   if (tlbEntry->lpf == lpf) {
-    // See if the TLB entry privilege level allows us write access
-    // from this CPL.
+    // See if the TLB entry privilege level allows us write access from this CPL
     if (isWriteOK(tlbEntry, USER_PL)) {
       bx_hostpageaddr_t hostPageAddr = tlbEntry->hostPageAddr;
       Bit32u pageOffset = PAGE_OFFSET(laddr);
       bx_phy_address pAddr = tlbEntry->ppf | pageOffset;
       Bit16u *hostAddr = (Bit16u*) (hostPageAddr | pageOffset);
       pageWriteStampTable.decWriteStamp(pAddr, 2);
-      ReadHostWordFromLittleEndian(hostAddr, data);
+      data = ReadHostWordFromLittleEndian(hostAddr);
       BX_CPU_THIS_PTR address_xlation.pages = (bx_ptr_equiv_t) hostAddr;
       BX_CPU_THIS_PTR address_xlation.paddress1 = pAddr;
 #if BX_SUPPORT_MEMTYPE
@@ -699,22 +668,21 @@ BX_CPU_C::read_RMW_linear_word(unsigned s, bx_address laddr)
 BX_CPU_C::read_RMW_linear_dword(unsigned s, bx_address laddr)
 {
   Bit32u data;
-  bx_TLB_entry *tlbEntry = BX_TLB_ENTRY_OF(laddr, 3);
+  bx_TLB_entry *tlbEntry = BX_DTLB_ENTRY_OF(laddr, 3);
 #if BX_SUPPORT_ALIGNMENT_CHECK && BX_CPU_LEVEL >= 4
   bx_address lpf = AlignedAccessLPFOf(laddr, (3 & BX_CPU_THIS_PTR alignment_check_mask));
 #else
   bx_address lpf = LPFOf(laddr);
 #endif    
   if (tlbEntry->lpf == lpf) {
-    // See if the TLB entry privilege level allows us write access
-    // from this CPL.
+    // See if the TLB entry privilege level allows us write access from this CPL
     if (isWriteOK(tlbEntry, USER_PL)) {
       bx_hostpageaddr_t hostPageAddr = tlbEntry->hostPageAddr;
       Bit32u pageOffset = PAGE_OFFSET(laddr);
       bx_phy_address pAddr = tlbEntry->ppf | pageOffset;
       Bit32u *hostAddr = (Bit32u*) (hostPageAddr | pageOffset);
       pageWriteStampTable.decWriteStamp(pAddr, 4);
-      ReadHostDWordFromLittleEndian(hostAddr, data);
+      data = ReadHostDWordFromLittleEndian(hostAddr);
       BX_CPU_THIS_PTR address_xlation.pages = (bx_ptr_equiv_t) hostAddr;
       BX_CPU_THIS_PTR address_xlation.paddress1 = pAddr;
 #if BX_SUPPORT_MEMTYPE
@@ -735,22 +703,21 @@ BX_CPU_C::read_RMW_linear_dword(unsigned s, bx_address laddr)
 BX_CPU_C::read_RMW_linear_qword(unsigned s, bx_address laddr)
 {
   Bit64u data;
-  bx_TLB_entry *tlbEntry = BX_TLB_ENTRY_OF(laddr, 7);
+  bx_TLB_entry *tlbEntry = BX_DTLB_ENTRY_OF(laddr, 7);
 #if BX_SUPPORT_ALIGNMENT_CHECK && BX_CPU_LEVEL >= 4
   bx_address lpf = AlignedAccessLPFOf(laddr, (7 & BX_CPU_THIS_PTR alignment_check_mask));
 #else
   bx_address lpf = LPFOf(laddr);
 #endif    
   if (tlbEntry->lpf == lpf) {
-    // See if the TLB entry privilege level allows us write access
-    // from this CPL.
+    // See if the TLB entry privilege level allows us write access from this CPL
     if (isWriteOK(tlbEntry, USER_PL)) {
       bx_hostpageaddr_t hostPageAddr = tlbEntry->hostPageAddr;
       Bit32u pageOffset = PAGE_OFFSET(laddr);
       bx_phy_address pAddr = tlbEntry->ppf | pageOffset;
       Bit64u *hostAddr = (Bit64u*) (hostPageAddr | pageOffset);
       pageWriteStampTable.decWriteStamp(pAddr, 8);
-      ReadHostQWordFromLittleEndian(hostAddr, data);
+      data = ReadHostQWordFromLittleEndian(hostAddr);
       BX_CPU_THIS_PTR address_xlation.pages = (bx_ptr_equiv_t) hostAddr;
       BX_CPU_THIS_PTR address_xlation.paddress1 = pAddr;
 #if BX_SUPPORT_MEMTYPE
@@ -929,18 +896,17 @@ BX_CPU_C::write_RMW_linear_qword(Bit64u val64)
 void BX_CPU_C::read_RMW_linear_dqword_aligned_64(unsigned s, bx_address laddr, Bit64u *hi, Bit64u *lo)
 {
   bx_address lpf = AlignedAccessLPFOf(laddr, 15);
-  bx_TLB_entry *tlbEntry = BX_TLB_ENTRY_OF(laddr, 0);
+  bx_TLB_entry *tlbEntry = BX_DTLB_ENTRY_OF(laddr, 0);
   if (tlbEntry->lpf == lpf) {
-    // See if the TLB entry privilege level allows us write access
-    // from this CPL.
+    // See if the TLB entry privilege level allows us write access from this CPL
     if (isWriteOK(tlbEntry, USER_PL)) {
       bx_hostpageaddr_t hostPageAddr = tlbEntry->hostPageAddr;
       Bit32u pageOffset = PAGE_OFFSET(laddr);
       bx_phy_address pAddr = tlbEntry->ppf | pageOffset;
       Bit64u *hostAddr = (Bit64u*) (hostPageAddr | pageOffset);
       pageWriteStampTable.decWriteStamp(pAddr, 16);
-      ReadHostQWordFromLittleEndian(hostAddr,     *lo);
-      ReadHostQWordFromLittleEndian(hostAddr + 1, *hi);
+      *lo = ReadHostQWordFromLittleEndian(hostAddr);
+      *hi = ReadHostQWordFromLittleEndian(hostAddr + 1);
       BX_CPU_THIS_PTR address_xlation.pages = (bx_ptr_equiv_t) hostAddr;
       BX_CPU_THIS_PTR address_xlation.paddress1 = pAddr;
 #if BX_SUPPORT_MEMTYPE
@@ -991,15 +957,14 @@ void BX_CPU_C::write_RMW_linear_dqword(Bit64u hi, Bit64u lo)
 void BX_CPU_C::write_new_stack_word(bx_address laddr, unsigned curr_pl, Bit16u data)
 {
   bx_bool user = (curr_pl == 3);
-  bx_TLB_entry *tlbEntry = BX_TLB_ENTRY_OF(laddr, 1);
+  bx_TLB_entry *tlbEntry = BX_DTLB_ENTRY_OF(laddr, 1);
 #if BX_SUPPORT_ALIGNMENT_CHECK && BX_CPU_LEVEL >= 4
   bx_address lpf = AlignedAccessLPFOf(laddr, (1 & BX_CPU_THIS_PTR alignment_check_mask));
 #else
   bx_address lpf = LPFOf(laddr);
 #endif    
   if (tlbEntry->lpf == lpf) {
-    // See if the TLB entry privilege level allows us write access
-    // from this CPL.
+    // See if the TLB entry privilege level allows us write access from this CPL
     if (isWriteOK(tlbEntry, user)) {
       bx_hostpageaddr_t hostPageAddr = tlbEntry->hostPageAddr;
       Bit32u pageOffset = PAGE_OFFSET(laddr);
@@ -1012,22 +977,21 @@ void BX_CPU_C::write_new_stack_word(bx_address laddr, unsigned curr_pl, Bit16u d
     }
   }
 
-  if (access_write_linear(laddr, 2, curr_pl, 0x1, (void *) &data) < 0)
+  if (access_write_linear(laddr, 2, curr_pl, BX_WRITE, 0x1, (void *) &data) < 0)
     exception(BX_SS_EXCEPTION, 0);
 }
 
 void BX_CPU_C::write_new_stack_dword(bx_address laddr, unsigned curr_pl, Bit32u data)
 {
   bx_bool user = (curr_pl == 3);
-  bx_TLB_entry *tlbEntry = BX_TLB_ENTRY_OF(laddr, 3);
+  bx_TLB_entry *tlbEntry = BX_DTLB_ENTRY_OF(laddr, 3);
 #if BX_SUPPORT_ALIGNMENT_CHECK && BX_CPU_LEVEL >= 4
   bx_address lpf = AlignedAccessLPFOf(laddr, (3 & BX_CPU_THIS_PTR alignment_check_mask));
 #else
   bx_address lpf = LPFOf(laddr);
 #endif    
   if (tlbEntry->lpf == lpf) {
-    // See if the TLB entry privilege level allows us write access
-    // from this CPL.
+    // See if the TLB entry privilege level allows us write access from this CPL
     if (isWriteOK(tlbEntry, user)) {
       bx_hostpageaddr_t hostPageAddr = tlbEntry->hostPageAddr;
       Bit32u pageOffset = PAGE_OFFSET(laddr);
@@ -1040,22 +1004,21 @@ void BX_CPU_C::write_new_stack_dword(bx_address laddr, unsigned curr_pl, Bit32u 
     }
   }
 
-  if (access_write_linear(laddr, 4, curr_pl, 0x3, (void *) &data) < 0)
+  if (access_write_linear(laddr, 4, curr_pl, BX_WRITE, 0x3, (void *) &data) < 0)
     exception(BX_SS_EXCEPTION, 0);
 }
 
 void BX_CPU_C::write_new_stack_qword(bx_address laddr, unsigned curr_pl, Bit64u data)
 {
   bx_bool user = (curr_pl == 3);
-  bx_TLB_entry *tlbEntry = BX_TLB_ENTRY_OF(laddr, 7);
+  bx_TLB_entry *tlbEntry = BX_DTLB_ENTRY_OF(laddr, 7);
 #if BX_SUPPORT_ALIGNMENT_CHECK && BX_CPU_LEVEL >= 4
   bx_address lpf = AlignedAccessLPFOf(laddr, (7 & BX_CPU_THIS_PTR alignment_check_mask));
 #else
   bx_address lpf = LPFOf(laddr);
 #endif    
   if (tlbEntry->lpf == lpf) {
-    // See if the TLB entry privilege level allows us write access
-    // from this CPL.
+    // See if the TLB entry privilege level allows us write access from this CPL
     if (isWriteOK(tlbEntry, user)) {
       bx_hostpageaddr_t hostPageAddr = tlbEntry->hostPageAddr;
       Bit32u pageOffset = PAGE_OFFSET(laddr);
@@ -1068,7 +1031,7 @@ void BX_CPU_C::write_new_stack_qword(bx_address laddr, unsigned curr_pl, Bit64u 
     }
   }
 
-  if (access_write_linear(laddr, 8, curr_pl, 0x7, (void *) &data) < 0)
+  if (access_write_linear(laddr, 8, curr_pl, BX_WRITE, 0x7, (void *) &data) < 0)
     exception(BX_SS_EXCEPTION, 0);
 }
 
@@ -1152,3 +1115,124 @@ accessOK:
   }
   goto accessOK;
 }
+
+#if BX_SUPPORT_CET
+Bit32u BX_CPP_AttrRegparmN(2) BX_CPU_C::shadow_stack_read_dword(bx_address offset, unsigned curr_pl)
+{
+  Bit32u data;
+
+  bx_bool user = (curr_pl == 3);
+  bx_TLB_entry *tlbEntry = BX_DTLB_ENTRY_OF(offset, 3);
+  bx_address lpf = AlignedAccessLPFOf(offset, 3);
+  if (tlbEntry->lpf == lpf) {
+    // See if the TLB entry privilege level allows us read access from this CPL
+    if (isShadowStackReadOK(tlbEntry, user)) {
+      bx_hostpageaddr_t hostPageAddr = tlbEntry->hostPageAddr;
+      Bit32u pageOffset = PAGE_OFFSET(offset);
+      Bit32u *hostAddr = (Bit32u*) (hostPageAddr | pageOffset);
+      data = ReadHostDWordFromLittleEndian(hostAddr);
+      BX_NOTIFY_LIN_MEMORY_ACCESS(offset, (tlbEntry->ppf | pageOffset), 4, tlbEntry->get_memtype(), BX_SHADOW_STACK_READ, (Bit8u*) &data);
+      return data;
+    }
+  }
+
+  if (access_read_linear(offset, 4, curr_pl, BX_SHADOW_STACK_READ, 0, (void *) &data) < 0)
+    exception(BX_GP_EXCEPTION, 0);
+
+  return data;
+}
+
+Bit64u BX_CPP_AttrRegparmN(2) BX_CPU_C::shadow_stack_read_qword(bx_address offset, unsigned curr_pl)
+{
+  Bit64u data;
+
+  bx_bool user = (curr_pl == 3);
+  bx_TLB_entry *tlbEntry = BX_DTLB_ENTRY_OF(offset, 7);
+  bx_address lpf = AlignedAccessLPFOf(offset, 7);
+  if (tlbEntry->lpf == lpf) {
+    // See if the TLB entry privilege level allows us read access from this CPL
+    if (isShadowStackReadOK(tlbEntry, user)) {
+      bx_hostpageaddr_t hostPageAddr = tlbEntry->hostPageAddr;
+      Bit32u pageOffset = PAGE_OFFSET(offset);
+      Bit64u *hostAddr = (Bit64u*) (hostPageAddr | pageOffset);
+      data = ReadHostQWordFromLittleEndian(hostAddr);
+      BX_NOTIFY_LIN_MEMORY_ACCESS(offset, (tlbEntry->ppf | pageOffset), 8, tlbEntry->get_memtype(), BX_SHADOW_STACK_READ, (Bit8u*) &data);
+      return data;
+    }
+  }
+
+  if (access_read_linear(offset, 8, curr_pl, BX_SHADOW_STACK_READ, 0, (void *) &data) < 0)
+    exception(BX_GP_EXCEPTION, 0);
+
+  return data;
+}
+
+void BX_CPP_AttrRegparmN(3) BX_CPU_C::shadow_stack_write_dword(bx_address offset, unsigned curr_pl, Bit32u data)
+{
+  bx_bool user = (curr_pl == 3);
+  bx_TLB_entry *tlbEntry = BX_DTLB_ENTRY_OF(offset, 3);
+  bx_address lpf = AlignedAccessLPFOf(offset, 3);
+  if (tlbEntry->lpf == lpf) {
+    // See if the TLB entry privilege level allows us write access from this CPL
+    if (isShadowStackWriteOK(tlbEntry, user)) {
+      bx_hostpageaddr_t hostPageAddr = tlbEntry->hostPageAddr;
+      Bit32u pageOffset = PAGE_OFFSET(offset);
+      bx_phy_address pAddr = tlbEntry->ppf | pageOffset;
+      BX_NOTIFY_LIN_MEMORY_ACCESS(offset, pAddr, 4, tlbEntry->get_memtype(), BX_SHADOW_STACK_WRITE, (Bit8u*) &data);
+      Bit32u *hostAddr = (Bit32u*) (hostPageAddr | pageOffset);
+      pageWriteStampTable.decWriteStamp(pAddr, 4);
+      WriteHostDWordToLittleEndian(hostAddr, data);
+      return;
+    }
+  }
+
+  if (access_write_linear(offset, 4, curr_pl, BX_SHADOW_STACK_WRITE, 0, (void *) &data) < 0)
+    exception(BX_GP_EXCEPTION, 0);
+}
+
+void BX_CPP_AttrRegparmN(3) BX_CPU_C::shadow_stack_write_qword(bx_address offset, unsigned curr_pl, Bit64u data)
+{
+  bx_bool user = (curr_pl == 3);
+  bx_TLB_entry *tlbEntry = BX_DTLB_ENTRY_OF(offset, 7);
+  bx_address lpf = AlignedAccessLPFOf(offset, 7);
+  if (tlbEntry->lpf == lpf) {
+    // See if the TLB entry privilege level allows us write access from this CPL
+    if (isShadowStackWriteOK(tlbEntry, user)) {
+      bx_hostpageaddr_t hostPageAddr = tlbEntry->hostPageAddr;
+      Bit32u pageOffset = PAGE_OFFSET(offset);
+      bx_phy_address pAddr = tlbEntry->ppf | pageOffset;
+      BX_NOTIFY_LIN_MEMORY_ACCESS(offset, pAddr, 8, tlbEntry->get_memtype(), BX_SHADOW_STACK_WRITE, (Bit8u*) &data);
+      Bit64u *hostAddr = (Bit64u*) (hostPageAddr | pageOffset);
+      pageWriteStampTable.decWriteStamp(pAddr, 8);
+      WriteHostQWordToLittleEndian(hostAddr, data);
+      return;
+    }
+  }
+
+  if (access_write_linear(offset, 8, curr_pl, BX_SHADOW_STACK_WRITE, 0, (void *) &data) < 0)
+    exception(BX_GP_EXCEPTION, 0);
+}
+
+bx_bool BX_CPP_AttrRegparmN(4) BX_CPU_C::shadow_stack_lock_cmpxchg8b(bx_address offset, unsigned curr_pl, Bit64u data, Bit64u expected_data)
+{
+  Bit64u val64 = shadow_stack_read_qword(offset, curr_pl);
+  if (val64 == expected_data) {
+    shadow_stack_write_qword(offset, curr_pl, data);
+    return true;
+  }
+  else {
+    shadow_stack_write_qword(offset, curr_pl, val64);
+    return false;
+  }
+}
+
+bx_bool BX_CPP_AttrRegparmN(2) BX_CPU_C::shadow_stack_atomic_set_busy(bx_address offset, unsigned curr_pl)
+{
+  return shadow_stack_lock_cmpxchg8b(offset, curr_pl, offset | 0x1, offset);
+}
+
+bx_bool BX_CPP_AttrRegparmN(2) BX_CPU_C::shadow_stack_atomic_clear_busy(bx_address offset, unsigned curr_pl)
+{
+  return shadow_stack_lock_cmpxchg8b(offset, curr_pl, offset, offset | 0x1);
+}
+#endif

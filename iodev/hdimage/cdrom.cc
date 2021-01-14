@@ -1,8 +1,8 @@
 /////////////////////////////////////////////////////////////////////////
-// $Id: cdrom.cc 12128 2014-01-21 20:56:50Z vruppert $
+// $Id: cdrom.cc 14039 2020-12-27 17:26:33Z vruppert $
 /////////////////////////////////////////////////////////////////////////
 //
-//  Copyright (C) 2002-2014  The Bochs Project
+//  Copyright (C) 2002-2020  The Bochs Project
 //
 //  This library is free software; you can redistribute it and/or
 //  modify it under the terms of the GNU Lesser General Public
@@ -20,11 +20,6 @@
 /////////////////////////////////////////////////////////////////////////
 
 // shared code for the low-level cdrom support
-
-// Define BX_PLUGGABLE in files that can be compiled into plugins.  For
-// platforms that require a special tag on exported symbols, BX_PLUGGABLE
-// is used to know when we are exporting symbols and when we are importing.
-#define BX_PLUGGABLE
 
 #include "bochs.h"
 #include "cdrom.h"
@@ -70,8 +65,13 @@ bx_bool cdrom_base_c::insert_cdrom(const char *dev)
   // Load CD-ROM. Returns 0 if CD is not ready.
   if (dev != NULL) path = strdup(dev);
   BX_INFO(("load cdrom with path='%s'", path));
+
   // all platforms except win32
-  fd = open(path, O_RDONLY);
+  fd = open(path, O_RDONLY
+#ifdef O_BINARY
+            | O_BINARY
+#endif
+           );
   if (fd < 0) {
     BX_ERROR(("open cd failed for '%s': %s", path, strerror(errno)));
     return 0;

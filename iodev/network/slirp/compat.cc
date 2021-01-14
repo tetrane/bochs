@@ -1,11 +1,11 @@
 /////////////////////////////////////////////////////////////////////////
-// $Id: compat.cc 13207 2017-04-23 08:38:16Z vruppert $
+// $Id: compat.cc 13932 2020-09-02 08:35:44Z vruppert $
 /////////////////////////////////////////////////////////////////////////
 /*
  * QEMU compatibility functions
  *
  * Copyright (c) 2003-2008  Fabrice Bellard
- * Copyright (C) 2014-2017  The Bochs Project
+ * Copyright (C) 2014-2020  The Bochs Project
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -163,7 +163,7 @@ int slirp_smb(Slirp *s, char *smb_tmpdir, const char *exported_dir,
 {
     static int instance;
     int i;
-    char smb_conf[128], smb_cmdline[128];
+    char smb_conf[128], smb_cmdline[150];
     char share[64], error_msg[256];
     struct passwd *passwd;
     FILE *f;
@@ -215,10 +215,13 @@ int slirp_smb(Slirp *s, char *smb_tmpdir, const char *exported_dir,
     fprintf(f,
             "[global]\n"
             "private dir=%s\n"
-            "socket address=127.0.0.1\n"
+            "interfaces=127.0.0.1\n"
+            "bind interfaces only=yes\n"
             "pid directory=%s\n"
             "lock directory=%s\n"
             "state directory=%s\n"
+            "cache directory=%s\n"
+            "ncalrpc dir=%s/ncalrpc\n"
             "log file=%s/log.smbd\n"
             "smb passwd file=%s/smbpasswd\n"
             "security = user\n"
@@ -228,6 +231,8 @@ int slirp_smb(Slirp *s, char *smb_tmpdir, const char *exported_dir,
             "read only=no\n"
             "guest ok=yes\n"
             "force user=%s\n",
+            smb_tmpdir,
+            smb_tmpdir,
             smb_tmpdir,
             smb_tmpdir,
             smb_tmpdir,

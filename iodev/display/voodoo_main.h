@@ -1,5 +1,5 @@
 /////////////////////////////////////////////////////////////////////////
-// $Id: voodoo_main.h 13236 2017-05-21 18:30:25Z vruppert $
+// $Id: voodoo_main.h 13418 2017-12-29 11:18:45Z vruppert $
 /////////////////////////////////////////////////////////////////////////
 /*
  *  Portion of this software comes with the following license
@@ -72,5 +72,8 @@ enum
 #define Voodoo_Output_Enable(x)    theVoodooDevice->output_enable(x)
 #define Voodoo_get_retrace(a)      theVoodooDevice->get_retrace(a)
 #define Voodoo_update_timing()     theVoodooDevice->update_timing()
+#define Voodoo_reg_write(a,b)      theVoodooDevice->reg_write(a,b)
+#define Banshee_2D_write(a,b)      theVoodooDevice->blt_reg_write(a,b)
+#define Banshee_LFB_write(a,b,c)   theVoodooDevice->mem_write_linear(a,b,c)
 
 #endif

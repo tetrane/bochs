@@ -1,8 +1,8 @@
 /////////////////////////////////////////////////////////////////////////
-// $Id: xmm.h 12384 2014-06-25 19:12:14Z sshwarts $
+// $Id: xmm.h 13963 2020-10-03 09:23:28Z sshwarts $
 /////////////////////////////////////////////////////////////////////////
 //
-//   Copyright (c) 2003-2014 Stanislav Shwartsman
+//   Copyright (c) 2003-2018 Stanislav Shwartsman
 //          Written by Stanislav Shwartsman [sshwarts at sourceforge net]
 //
 //  This library is free software; you can redistribute it and/or
@@ -65,38 +65,6 @@ union bx_xmm_reg_t {
 
 /* AVX REGISTER */
 
-enum bx_avx_vector_length {
-  BX_NO_VL,
-  BX_VL128  = 1,
-  BX_VL256  = 2,
-  BX_VL512  = 4,
-  BX_VL1024 = 8 // defined in EVEX but currently #UD in all implementations
-};
-
-#if BX_SUPPORT_EVEX
-#  define BX_VLMAX BX_VL512
-#else
-#  if BX_SUPPORT_AVX
-#    define BX_VLMAX BX_VL256
-#  else
-#    define BX_VLMAX BX_VL128
-#  endif
-#endif
-
-#if BX_SUPPORT_EVEX
-#  define BX_XMM_REGISTERS 32
-#else
-#  if BX_SUPPORT_X86_64
-#    define BX_XMM_REGISTERS 16
-#  else
-#    define BX_XMM_REGISTERS 8
-#  endif
-#endif
-
-#define BX_VECTOR_TMP_REGISTER (BX_XMM_REGISTERS)
-
-#if BX_SUPPORT_AVX
-
 typedef
 #if defined(_MSC_VER) && (_MSC_VER>=1300)
 __declspec(align(32))
@@ -139,10 +107,6 @@ union bx_ymm_reg_t {
 #define ymm64u(i)   ymm_u64[(i)]
 #define ymm128(i)   ymm_v128[(i)]
 #endif
-
-#endif
-
-#if BX_SUPPORT_EVEX
 
 typedef
 #if defined(_MSC_VER) && (_MSC_VER>=1300)
@@ -188,8 +152,6 @@ union bx_zmm_reg_t {
 #define zmm64u(i)   zmm_u64[(i)]
 #define zmm128(i)   zmm_v128[(i)]
 #define zmm256(i)   zmm_v256[(i)]
-#endif
-
 #endif
 
 #if BX_SUPPORT_EVEX
@@ -483,12 +445,12 @@ BX_CPP_INLINE float64 convert_to_QNaN(float64 op)
  * MM 17    Misaligned Exception Mask               0
  */
 
-#define MXCSR_EXCEPTIONS                 0x0000003F
-#define MXCSR_DAZ                        0x00000040
-#define MXCSR_MASKED_EXCEPTIONS          0x00001F80
-#define MXCSR_ROUNDING_CONTROL           0x00006000
-#define MXCSR_FLUSH_MASKED_UNDERFLOW     0x00008000
-#define MXCSR_MISALIGNED_EXCEPTION_MASK  0x00020000
+const Bit32u MXCSR_EXCEPTIONS                = 0x0000003F;
+const Bit32u MXCSR_DAZ                       = 0x00000040;
+const Bit32u MXCSR_MASKED_EXCEPTIONS         = 0x00001F80;
+const Bit32u MXCSR_ROUNDING_CONTROL          = 0x00006000;
+const Bit32u MXCSR_FLUSH_MASKED_UNDERFLOW    = 0x00008000;
+const Bit32u MXCSR_MISALIGNED_EXCEPTION_MASK = 0x00020000;
 
 #define MXCSR_IE 0x00000001
 #define MXCSR_DE 0x00000002
@@ -504,7 +466,7 @@ BX_CPP_INLINE float64 convert_to_QNaN(float64 op)
 #define MXCSR_UM 0x00000800
 #define MXCSR_PM 0x00001000
 
-#define MXCSR_RESET 0x00001F80  /* reset value of the MXCSR register */
+const Bit32u MXCSR_RESET = 0x00001F80;  /* reset value of the MXCSR register */
 
 struct BOCHSAPI bx_mxcsr_t
 {

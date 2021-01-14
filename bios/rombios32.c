@@ -1,10 +1,10 @@
 /////////////////////////////////////////////////////////////////////////
-// $Id: rombios32.c 13189 2017-04-17 07:26:00Z vruppert $
+// $Id: rombios32.c 13977 2020-10-13 07:55:56Z vruppert $
 /////////////////////////////////////////////////////////////////////////
 //
 //  32 bit Bochs BIOS init code
 //  Copyright (C) 2006       Fabrice Bellard
-//  Copyright (C) 2001-2017  The Bochs Project
+//  Copyright (C) 2001-2020  The Bochs Project
 //
 //  This library is free software; you can redistribute it and/or
 //  modify it under the terms of the GNU Lesser General Public
@@ -370,7 +370,7 @@ void bios_printf(int flags, const char *fmt, ...)
 
 void delay_ms(int n)
 {
-    int i, j;
+    volatile int i, j;
     for(i = 0; i < n; i++) {
 #ifdef BX_QEMU
         volatile int k = 0;
@@ -574,6 +574,7 @@ extern uint8_t smp_ap_boot_code_end;
 void smp_probe(void)
 {
     uint32_t val, sipi_vector;
+    uint64_t val64;
 
     writew(&smp_cpus, 1);
     if (cpuid_features & CPUID_APIC) {
@@ -598,6 +599,12 @@ void smp_probe(void)
         while (cmos_readb(0x5f) + 1 != readw(&smp_cpus))
             ;
 #endif
+        /* enable VMX for CPU #0 in IA32_FEATURE_CONTROL */
+        if ((cpuid_ext_features & CPUID_EXT_VMX) > 0) {
+            val64 = rdmsr(MSR_FEATURE_CTRL);
+            val64 |= (FEATURE_CTRL_LOCK | FEATURE_CTRL_VMX);
+            wrmsr(MSR_FEATURE_CTRL, val64);
+        }
     }
     BX_INFO("Found %d cpu(s)\n", readw(&smp_cpus));
 }
@@ -611,7 +618,9 @@ typedef struct PCIDevice {
 } PCIDevice;
 
 static uint32_t pci_bios_io_addr;
+static uint32_t pci_bios_agp_io_addr;
 static uint32_t pci_bios_mem_addr;
+static uint32_t pci_bios_agp_mem_addr;
 static uint32_t pci_bios_rom_start;
 /* host irqs corresponding to PCI irqs A-D */
 static uint8_t pci_irqs[4] = { 11, 9, 11, 9 };
@@ -655,39 +664,30 @@ static uint32_t pci_config_readb(PCIDevice *d, uint32_t addr)
 
 static void pci_set_io_region_addr(PCIDevice *d, int region_num, uint32_t addr)
 {
-    uint16_t cmd;
-    uint32_t ofs, old_addr;
+    uint32_t ofs;
 
-    if ( region_num == PCI_ROM_SLOT ) {
+    if (region_num == PCI_ROM_SLOT) {
         ofs = PCI_ROM_ADDRESS;
         addr |= PCI_ROM_ADDRESS_ENABLE;
-    }else{
+    } else {
         ofs = PCI_BASE_ADDRESS_0 + region_num * 4;
     }
-
-    old_addr = pci_config_readl(d, ofs);
-
     pci_config_writel(d, ofs, addr);
     BX_INFO("region %d: 0x%08x\n", region_num, addr & ~0x01);
 
-    /* enable memory mappings */
-    cmd = pci_config_readw(d, PCI_COMMAND);
-    if ( region_num == PCI_ROM_SLOT )
-        cmd |= PCI_COMMAND_MEMORY;
-    else if (old_addr & PCI_ADDRESS_SPACE_IO)
-        cmd |= PCI_COMMAND_IO;
-    else
-        cmd |= PCI_COMMAND_MEMORY;
-    pci_config_writew(d, PCI_COMMAND, cmd);
 }
 
 /* return the global irq number corresponding to a given device irq
    pin. We could also use the bus number to have a more precise
    mapping. */
-static int pci_slot_get_pirq(PCIDevice *pci_dev, int irq_num)
+static int pci_slot_get_pirq(PCIDevice *pci_dev, int irq_num, int is_i440bx)
 {
     int slot_addend;
-    slot_addend = (pci_dev->devfn >> 3) - 1;
+    if (is_i440bx) {
+      slot_addend = (pci_dev->devfn >> 3) - 7;
+    } else {
+      slot_addend = (pci_dev->devfn >> 3) - 1;
+    }
     return (irq_num + slot_addend) & 3;
 }
 
@@ -704,6 +704,17 @@ static void find_bios_table_area(void)
         }
     }
     return;
+}
+
+static long find_pir_table(void)
+{
+    unsigned long addr;
+    for(addr = 0xf0000; addr < 0x100000; addr += 16) {
+        if (*(uint32_t *)addr == 0x52495024) {
+            return addr;
+        }
+    }
+    return 0;
 }
 
 static void bios_shadow_init(PCIDevice *d)
@@ -740,14 +751,16 @@ static void bios_lock_shadow_ram(void)
 static void pci_bios_init_bridges(PCIDevice *d)
 {
     uint16_t vendor_id, device_id;
+    long addr;
+    uint8_t *pir;
 
     vendor_id = pci_config_readw(d, PCI_VENDOR_ID);
     device_id = pci_config_readw(d, PCI_DEVICE_ID);
 
-    if (vendor_id == PCI_VENDOR_ID_INTEL &&
-       (device_id == PCI_DEVICE_ID_INTEL_82371FB_0 ||
-        device_id == PCI_DEVICE_ID_INTEL_82371SB_0 ||
-        device_id == PCI_DEVICE_ID_INTEL_82371AB_0)) {
+    if (vendor_id == PCI_VENDOR_ID_INTEL) {
+      if (device_id == PCI_DEVICE_ID_INTEL_82371FB_0 ||
+          device_id == PCI_DEVICE_ID_INTEL_82371SB_0 ||
+          device_id == PCI_DEVICE_ID_INTEL_82371AB_0) {
         int i, irq;
         uint8_t elcr[2];
 
@@ -766,10 +779,40 @@ static void pci_bios_init_bridges(PCIDevice *d)
         outb(0x4d1, elcr[1]);
         BX_INFO("PIIX3/PIIX4 init: elcr=%02x %02x\n",
                 elcr[0], elcr[1]);
-    } else if (vendor_id == PCI_VENDOR_ID_INTEL &&
-              (device_id == PCI_DEVICE_ID_INTEL_82441 || device_id == PCI_DEVICE_ID_INTEL_82437)) {
+      } else if (device_id == PCI_DEVICE_ID_INTEL_82441 || device_id == PCI_DEVICE_ID_INTEL_82437) {
         /* i440FX / i430FX PCI bridge */
         bios_shadow_init(d);
+      } else if (device_id == PCI_DEVICE_ID_INTEL_82443) {
+        /* i440BX PCI bridge */
+        bios_shadow_init(d);
+        addr = find_pir_table();
+        pir = (uint8_t *)addr;
+        BX_INFO("Modify pir_table at: 0x%08lx\n", addr);
+        writeb(pir + 0x09, 0x38); // IRQ router DevFunc
+        writeb(pir + 0x1f, 0x07); // Checksum
+        writeb(pir + 0x21, 0x38); // 1st entry: PCI2ISA
+        writeb(pir + 0x31, 0x40); // 2nd entry: 1st slot
+        writeb(pir + 0x41, 0x48); // 3rd entry: 2nd slot
+        writeb(pir + 0x51, 0x50); // 4th entry: 3rd slot
+        writeb(pir + 0x61, 0x58); // 5th entry: 4th slot
+        writeb(pir + 0x70, 0x01); // 6th entry: AGP bus
+        writeb(pir + 0x71, 0x00); // 6th entry: AGP slot
+        pci_config_writeb(d, 0xb4, 0x30); /* AGP aperture size 64 MB */
+      } else if (device_id == PCI_DEVICE_ID_INTEL_82443_1) {
+        /* i440BX PCI/AGP bridge */
+        pci_config_writew(d, 0x04, 0x0107);
+        pci_config_writeb(d, 0x0d, 0x40);
+        pci_config_writeb(d, 0x19, 0x01);
+        pci_config_writeb(d, 0x1a, 0x01);
+        pci_config_writeb(d, 0x1b, 0x40);
+        pci_config_writeb(d, 0x1c, 0xe0);
+        pci_config_writeb(d, 0x1d, 0xf0);
+        pci_config_writew(d, 0x20, 0xd000);
+        pci_config_writew(d, 0x22, 0xd1f0);
+        pci_config_writew(d, 0x24, 0xd200);
+        pci_config_writew(d, 0x26, 0xd3f0);
+        pci_config_writeb(d, 0xee, 0x88);
+      }
     }
 }
 
@@ -881,16 +924,22 @@ static void pci_bios_init_pcirom(PCIDevice *d, uint32_t paddr)
 
 static void pci_bios_init_device(PCIDevice *d)
 {
-    PCIDevice d1, *i440fx = &d1;
-    uint16_t class;
+    PCIDevice d1, *bridge = &d1;
+    uint16_t class, cmd;
     uint32_t *paddr;
-    int i, pin, pic_irq, vendor_id, device_id;
+    int headt, i, pin, pic_irq, vendor_id, device_id, is_i440bx = 0;
 
-    i440fx->bus = 0;
-    i440fx->devfn = 0;
+    bridge->bus = 0;
+    bridge->devfn = 0;
+    vendor_id = pci_config_readw(bridge, PCI_VENDOR_ID);
+    device_id = pci_config_readw(bridge, PCI_DEVICE_ID);
+    if (vendor_id == PCI_VENDOR_ID_INTEL && device_id == PCI_DEVICE_ID_INTEL_82443) {
+      is_i440bx = 1;
+    }
     class = pci_config_readw(d, PCI_CLASS_DEVICE);
     vendor_id = pci_config_readw(d, PCI_VENDOR_ID);
     device_id = pci_config_readw(d, PCI_DEVICE_ID);
+    headt = pci_config_readb(d, PCI_HEADER_TYPE);
     BX_INFO("PCI: bus=%d devfn=0x%02x: vendor_id=0x%04x device_id=0x%04x class=0x%04x\n",
             d->bus, d->devfn, vendor_id, device_id, class);
     switch(class) {
@@ -929,6 +978,12 @@ static void pci_bios_init_device(PCIDevice *d)
         break;
     default:
     default_map:
+        if ((headt & 0x03) != 0)
+          break;
+        /* disable i/o and memory access */
+        cmd = pci_config_readw(d, PCI_COMMAND);
+        cmd &= 0xfffc;
+        pci_config_writew(d, PCI_COMMAND, cmd);
         /* default memory mappings */
         for(i = 0; i < PCI_NUM_REGIONS; i++) {
             int ofs;
@@ -945,10 +1000,18 @@ static void pci_bios_init_device(PCIDevice *d)
             if (val != 0) {
                 size = (~(val & ~0xf)) + 1;
                 if (val & PCI_ADDRESS_SPACE_IO) {
-                    paddr = &pci_bios_io_addr;
+                    if (d->bus == 1) {
+                        paddr = &pci_bios_agp_io_addr;
+                    } else {
+                        paddr = &pci_bios_io_addr;
+                    }
                     align = 0x10;
                 } else {
-                    paddr = &pci_bios_mem_addr;
+                    if (d->bus == 1) {
+                        paddr = &pci_bios_agp_mem_addr;
+                    } else {
+                        paddr = &pci_bios_mem_addr;
+                    }
                     align = 0x10000;
                 }
                 *paddr = (*paddr + size - 1) & ~(size - 1);
@@ -963,13 +1026,17 @@ static void pci_bios_init_device(PCIDevice *d)
                 }
             }
         }
+        /* enable i/o and memory access */
+        cmd = pci_config_readw(d, PCI_COMMAND);
+        cmd |= (PCI_COMMAND_MEMORY | PCI_COMMAND_IO);
+        pci_config_writew(d, PCI_COMMAND, cmd);
         break;
     }
 
     /* map the interrupt */
     pin = pci_config_readb(d, PCI_INTERRUPT_PIN);
     if (pin != 0) {
-        pin = pci_slot_get_pirq(d, pin - 1);
+        pin = pci_slot_get_pirq(d, pin - 1, is_i440bx);
         pic_irq = pci_irqs[pin];
         pci_config_writeb(d, PCI_INTERRUPT_LINE, pic_irq);
     }
@@ -988,9 +1055,19 @@ static void pci_bios_init_device(PCIDevice *d)
 
 static void pci_bios_init_optrom(PCIDevice *d)
 {
-    uint32_t paddr;
+    uint32_t paddr, size;
     uint16_t class;
 
+    if (pci_bios_rom_start == 0xc0000) {
+        /* skip VGA BIOS area in case it's ISA */
+        size = readb((void *)0xc0002);
+        if (size & 0x1f) {
+            size &= 0xe0;
+            size += 0x20;
+        }
+        size <<= 9;
+        pci_bios_rom_start += size;
+    }
     class = pci_config_readw(d, PCI_CLASS_DEVICE);
     if (class != PCI_CLASS_DISPLAY_VGA) {
         paddr = pci_config_readl(d, PCI_ROM_ADDRESS) & 0xfffffc00;
@@ -1004,7 +1081,7 @@ void pci_for_each_device(void (*init_func)(PCIDevice *d))
     int bus, devfn;
     uint16_t vendor_id, device_id;
 
-    for(bus = 0; bus < 1; bus++) {
+    for(bus = 0; bus < 2; bus++) {
         for(devfn = 0; devfn < 256; devfn++) {
             d->bus = bus;
             d->devfn = devfn;
@@ -1020,7 +1097,9 @@ void pci_for_each_device(void (*init_func)(PCIDevice *d))
 void pci_bios_init(void)
 {
     pci_bios_io_addr = 0xc000;
+    pci_bios_agp_io_addr = 0xe000;
     pci_bios_mem_addr = 0xc0000000;
+    pci_bios_agp_mem_addr = 0xd0000000;
     pci_bios_rom_start = 0xc0000;
 
     pci_for_each_device(pci_bios_init_bridges);
@@ -1926,7 +2005,7 @@ smbios_entry_point_init(void *start,
     }
 
 /* Type 0 -- BIOS Information */
-#define RELEASE_DATE_STR "01/01/2007"
+#define RELEASE_DATE_STR "29/12/2019"
 static void *
 smbios_type_0_init(void *start)
 {
@@ -2311,7 +2390,8 @@ static void find_440fx(PCIDevice *d)
     device_id = pci_config_readw(d, PCI_DEVICE_ID);
 
     if (vendor_id == PCI_VENDOR_ID_INTEL &&
-       (device_id == PCI_DEVICE_ID_INTEL_82441 || device_id == PCI_DEVICE_ID_INTEL_82437))
+       (device_id == PCI_DEVICE_ID_INTEL_82441 || device_id == PCI_DEVICE_ID_INTEL_82437 ||
+        device_id == PCI_DEVICE_ID_INTEL_82443))
         i440_pcidev = *d;
 }
 

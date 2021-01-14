@@ -1,5 +1,5 @@
 /////////////////////////////////////////////////////////////////////////
-// $Id: vbox.cc 13055 2017-01-30 19:08:37Z vruppert $
+// $Id: vbox.cc 14075 2021-01-10 10:18:23Z vruppert $
 /////////////////////////////////////////////////////////////////////////
 
 /*
@@ -10,7 +10,7 @@
  * Contact: fys [at] fysnet [dot] net
  *
  * Copyright (C) 2015       Benjamin D Lunt.
- * Copyright (C) 2006-2017  The Bochs Project
+ * Copyright (C) 2006-2021  The Bochs Project
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -50,10 +50,42 @@
 #include "hdimage.h"
 #include "vbox.h"
 
-#define LOG_THIS bx_devices.pluginHDImageCtl->
+#define LOG_THIS bx_hdimage_ctl.
 
 const off_t vbox_image_t::INVALID_OFFSET = (off_t)-1;
 const int vbox_image_t::SECTOR_SIZE = 512;
+
+#ifndef BXIMAGE
+
+// disk image plugin entry points
+
+int CDECL libvbox_img_plugin_init(plugin_t *plugin, plugintype_t type)
+{
+  return 0; // Success
+}
+
+void CDECL libvbox_img_plugin_fini(void)
+{
+  // Nothing here yet
+}
+
+#endif
+
+//
+// Define the static class that registers the derived device image class,
+// and allocates one on request.
+//
+class bx_vbox_locator_c : public hdimage_locator_c {
+public:
+  bx_vbox_locator_c(void) : hdimage_locator_c("vbox") {}
+protected:
+  device_image_t *allocate(Bit64u disk_size, const char *journal) {
+    return (new vbox_image_t());
+  }
+  int check_format(int fd, Bit64u disk_size) {
+    return (vbox_image_t::check_format(fd, disk_size));
+  }
+} bx_vbox_match;
 
 vbox_image_t::vbox_image_t()
   : file_descriptor(-1),
@@ -123,12 +155,13 @@ int vbox_image_t::open(const char* _pathname, int flags)
   current_offset = 0;
 
   hd_size = header.disk_size;
+  sect_size = (unsigned) header.sector_size;
   if ((unsigned) header.cylinders > 0) {
     cylinders = (unsigned) header.cylinders;
     heads = (unsigned) header.heads;
     spt = (unsigned) header.sectors;
   } else {
-    cylinders = (unsigned) ((header.disk_size / 512) / 16) / 63;
+    cylinders = (unsigned) ((header.disk_size / sect_size) / 16) / 63;
     heads = 16;
     spt = 63;
   }
@@ -138,6 +171,7 @@ int vbox_image_t::open(const char* _pathname, int flags)
   BX_DEBUG(("   .cylinders = %d", cylinders));
   BX_DEBUG(("   .heads     = %d", heads));
   BX_DEBUG(("   .sectors   = %d", spt));
+  BX_DEBUG(("   .sect_size = %d", sect_size));
 
   return 1;
 }

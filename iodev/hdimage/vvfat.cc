@@ -1,12 +1,12 @@
 /////////////////////////////////////////////////////////////////////////
-// $Id: vvfat.cc 13017 2016-12-30 10:04:06Z vruppert $
+// $Id: vvfat.cc 14039 2020-12-27 17:26:33Z vruppert $
 /////////////////////////////////////////////////////////////////////////
 //
 // Virtual VFAT image support (shadows a local directory)
 // ported from QEMU block driver with some additions (see below)
 //
 // Copyright (c) 2004,2005  Johannes E. Schindelin
-// Copyright (C) 2010-2016  The Bochs Project
+// Copyright (C) 2010-2020  The Bochs Project
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -53,11 +53,37 @@
 #include "hdimage.h"
 #include "vvfat.h"
 
-#define LOG_THIS bx_devices.pluginHDImageCtl->
+#define LOG_THIS bx_hdimage_ctl.
 
 #define VVFAT_MBR  "vvfat_mbr.bin"
 #define VVFAT_BOOT "vvfat_boot.bin"
 #define VVFAT_ATTR "vvfat_attr.cfg"
+
+// disk image plugin entry points
+
+int CDECL libvvfat_img_plugin_init(plugin_t *plugin, plugintype_t type)
+{
+  return 0; // Success
+}
+
+void CDECL libvvfat_img_plugin_fini(void)
+{
+  // Nothing here yet
+}
+
+//
+// Define the static class that registers the derived device image class,
+// and allocates one on request.
+//
+class bx_vvfat_locator_c : public hdimage_locator_c {
+public:
+  bx_vvfat_locator_c(void) : hdimage_locator_c("vvfat") {}
+protected:
+  device_image_t *allocate(Bit64u disk_size, const char *journal) {
+    return (new vvfat_image_t(disk_size, journal));
+  }
+} bx_vvfat_match;
+
 
 static int vvfat_count = 0;
 
@@ -131,6 +157,7 @@ static inline void* array_get_next(array_t* array)
   return result;
 }
 
+#if 0
 static inline void* array_insert(array_t* array,unsigned int index,unsigned int count)
 {
   if ((array->next+count)*array->item_size > array->size) {
@@ -182,7 +209,6 @@ static inline int array_roll(array_t* array, int index_to, int index_from, int c
   return 0;
 }
 
-#if 0
 static inline int array_remove_slice(array_t* array,int index, int count)
 {
   assert(index >=0);
@@ -418,7 +444,7 @@ void vvfat_image_t::init_mbr(void)
   real_mbr->magic[1] = 0xaa;
 }
 
-// dest is assumed to hold 258 bytes, and pads with 0xffff up to next multiple of 26
+// dest is assumed to hold 260 bytes, and pads with 0xffff up to next multiple of 26
 static inline int short2long_name(char* dest,const char* src)
 {
   int i;
@@ -437,7 +463,7 @@ static inline int short2long_name(char* dest,const char* src)
 
 direntry_t* vvfat_image_t::create_long_filename(const char* filename)
 {
-  char buffer[258];
+  char buffer[260];
   int length = short2long_name(buffer, filename),
       number_of_entries = (length+25) / 26, i;
   direntry_t* entry;
@@ -473,13 +499,11 @@ static void set_begin_of_direntry(direntry_t* direntry, Bit32u begin)
 
 static inline Bit8u fat_chksum(const direntry_t* entry)
 {
-  Bit8u chksum = 0;
+  Bit8u c, chksum = 0;
   int i;
 
   for (i = 0; i < 11; i++) {
-    unsigned char c;
-
-    c = (i < 8) ? entry->name[i] : entry->extension[i-8];
+    c = entry->name[i];
     chksum = (((chksum & 0xfe) >> 1) | ((chksum & 0x01) ? 0x80:0)) + c;
   }
 
@@ -567,7 +591,7 @@ direntry_t* vvfat_image_t::create_short_and_long_name(
 
   if (j > 0)
     for (i = 0; i < 3 && tempfn[j+1+i]; i++)
-      entry->extension[i] = tempfn[j+1+i];
+      entry->name[i + 8] = tempfn[j+1+i];
 
   // upcase & remove unwanted characters
   for (i=10;i>=0;i--) {
@@ -942,8 +966,7 @@ int vvfat_image_t::init_directories(const char* dirname)
     entry->attributes = 0x28; // archive | volume label
     entry->mdate = 0x3d81; // 01.12.2010
     entry->mtime = 0x6000; // 12:00:00
-    memcpy(entry->name, "BOCHS VV", 8);
-    memcpy(entry->extension, "FAT", 3);
+    memcpy(entry->name, "BOCHS VVFAT", 11);
   }
 
   // Now build FAT, and write back information into directory
@@ -1111,7 +1134,7 @@ bx_bool vvfat_image_t::read_sector_from_file(const char *path, Bit8u *buffer, Bi
 void vvfat_image_t::set_file_attributes(void)
 {
   char path[BX_PATHNAME_LEN];
-  char fpath[BX_PATHNAME_LEN];
+  char fpath[BX_PATHNAME_LEN+1];
   char line[512];
   char *ret, *ptr;
   FILE *fd;
@@ -1200,6 +1223,7 @@ int vvfat_image_t::open(const char* dirname, int flags)
       if (fat_type != 0) {
         sector_count = partition->start_sector_long + partition->length_sector_long;
         spt = partition->start_sector_long;
+        sect_size = 512;
         if (partition->end_CHS.head > 15) {
           heads = 16;
         } else {
@@ -1405,8 +1429,8 @@ direntry_t* vvfat_image_t::read_direntry(Bit8u *buffer, char *filename)
           memcpy(filename, entry->name, 8);
           i = 7;
           while ((i > 0) && (filename[i] == ' ')) filename[i--] = 0;
-          if (entry->extension[0] != ' ') strcat(filename, ".");
-          memcpy(filename+i+2, entry->extension, 3);
+          if (entry->name[8] != ' ') strcat(filename, ".");
+          memcpy(filename+i+2, entry->name + 8, 3);
           i = strlen(filename) - 1;
           while (filename[i] == ' ') filename[i--] = 0;
           for (i = 0; i < (int)strlen(filename); i++) {
@@ -1568,7 +1592,7 @@ void vvfat_image_t::parse_directory(const char *path, Bit32u start_cluster)
   Bit8u *buffer, *ptr;
   direntry_t *entry, *newentry;
   char filename[BX_PATHNAME_LEN];
-  char full_path[BX_PATHNAME_LEN];
+  char full_path[BX_PATHNAME_LEN+1];
   char attr_txt[4];
   const char *rel_path;
   mapping_t *mapping;

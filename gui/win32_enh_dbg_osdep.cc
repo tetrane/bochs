@@ -1,5 +1,5 @@
 /////////////////////////////////////////////////////////////////////////
-// $Id: win32_enh_dbg_osdep.cc 12543 2014-11-06 19:02:34Z vruppert $
+// $Id: win32_enh_dbg_osdep.cc 13923 2020-08-21 15:18:44Z vruppert $
 /////////////////////////////////////////////////////////////////////////
 //
 //  BOCHS ENHANCED DEBUGGER Ver 1.2
@@ -8,15 +8,13 @@
 //
 //  Modified by Bruce Ewing
 //
-//  Copyright (C) 2008-2014  The Bochs Project
-
-#include "config.h"
-
-#if BX_DEBUGGER && BX_DEBUGGER_GUI
+//  Copyright (C) 2008-2020  The Bochs Project
 
 #include "bochs.h"
 #include "win32dialog.h"
 #include "enh_dbg.h"
+
+#if BX_DEBUGGER && BX_DEBUGGER_GUI
 
 // Important Note! All the string manipulation functions assume one byte chars -- ie. "ascii",
 // instead of "wide" chars. If there exists a compiler that automatically assumes wide chars
@@ -1269,14 +1267,14 @@ LRESULT CALLBACK B_WP(HWND hh,UINT mm,WPARAM ww,LPARAM ll)
             DefFont = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
 
             // Register Window
-            char* txt0[] = {"Reg Name","Hex Value","Decimal"};
-            LV_COLUMN lvc = {LVCF_SUBITEM | LVCF_TEXT,LVCFMT_LEFT,0,txt0[0]};
+            const char* txt0[] = {"Reg Name","Hex Value","Decimal"};
+            LV_COLUMN lvc = {LVCF_SUBITEM | LVCF_TEXT,LVCFMT_LEFT,0, (char*)txt0[0]};
             hL[REG_WND] = CreateWindowEx(0,"sLV","",LVStyle[0],0,0,100,100,hh,(HMENU)1001,GetModuleHandle(0),0);
             // Note; WM_CREATE only happens once, so don't bother eliminating these SendMessage macros
             ListView_InsertColumn(hL[REG_WND],0,&lvc);
-            lvc.pszText = txt0[1];
+            lvc.pszText = (char*)txt0[1];
             ListView_InsertColumn(hL[REG_WND],1,&lvc);
-            lvc.pszText = txt0[2];
+            lvc.pszText = (char*)txt0[2];
             ListView_InsertColumn(hL[REG_WND],2,&lvc);
 
             // Enable the groupID's for the register window
@@ -1310,13 +1308,13 @@ LRESULT CALLBACK B_WP(HWND hh,UINT mm,WPARAM ww,LPARAM ll)
             // Asm Window
             hL[ASM_WND] = CreateWindowEx(0,"sLV","",LVStyle[1] | WS_BORDER,0,0,1,1,hh,(HMENU)1000,GetModuleHandle(0),0);
             CurCenterList = 1;          // ASM window starts with the border
-            char* txt3[] = {"L.Address","Bytes","Mnemonic"};
+            const char* txt3[] = {"L.Address","Bytes","Mnemonic"};
 
-            lvc.pszText = txt3[0];
+            lvc.pszText = (char*)txt3[0];
             ListView_InsertColumn(hL[ASM_WND],0,&lvc);
-            lvc.pszText = txt3[1];
+            lvc.pszText = (char*)txt3[1];
             ListView_InsertColumn(hL[ASM_WND],1,&lvc);
-            lvc.pszText = txt3[2];
+            lvc.pszText = (char*)txt3[2];
             ListView_InsertColumn(hL[ASM_WND],2,&lvc);
 //          SendMessage(hL[ASM_WND], LVM_SETEXTENDEDLISTVIEWSTYLE, LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER,
 //              LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER);
@@ -1867,28 +1865,21 @@ void MakeBL(HTREEITEM *h_P, bx_param_c *p)
     int j = strlen (tmpcb);
     switch (p->get_type())
     {
-        case BXT_PARAM_NUM:
-            if (((bx_param_num_c*)p)->get_base() == BASE_DEC)
-                sprintf (tmpcb + j,": " FMT_LL "d",((bx_param_num_c*)p)->get64());
-            else
-                sprintf (tmpcb + j,": 0x" FMT_LL "X",((bx_param_num_c*)p)->get64());
-            break;
         case BXT_LIST:
             as_list = (bx_list_c *)p;
             i = as_list->get_size();
             break;
+        case BXT_PARAM_NUM:
         case BXT_PARAM_BOOL:
-            sprintf (tmpcb + j,": %s",((bx_param_bool_c*)p)->get()?"true":"false");
-            break;
         case BXT_PARAM_ENUM:
-            sprintf (tmpcb + j,": %s",((bx_param_enum_c*)p)->get_selected());
-            break;
         case BXT_PARAM_STRING:
-            ((bx_param_string_c*)p)->sprint(tmpstr, BX_PATHNAME_LEN, 0);
+        case BXT_PARAM_BYTESTRING:
+            p->dump_param(tmpstr, BX_PATHNAME_LEN);
             sprintf(tmpcb + j,": %s", tmpstr);
             break;
         case BXT_PARAM_DATA:
             sprintf (tmpcb + j,": binary data, size=%d",((bx_shadow_data_c*)p)->get_size());
+            break;
     }
     MakeTreeChild (h_P, i, &h_new);
     if (i > 0)

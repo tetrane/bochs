@@ -1,5 +1,5 @@
 /////////////////////////////////////////////////////////////////////////
-// $Id: debugstuff.cc 13282 2017-08-22 21:14:39Z sshwarts $
+// $Id: debugstuff.cc 14057 2021-01-02 14:09:03Z sshwarts $
 /////////////////////////////////////////////////////////////////////////
 //
 //  Copyright (C) 2001-2009  The Bochs Project
@@ -25,10 +25,6 @@
 #include "cpu.h"
 #define LOG_THIS BX_CPU_THIS_PTR
 
-#if BX_DISASM
-
-#include "disasm/disasm.h"
-
 void BX_CPU_C::debug_disasm_instruction(bx_address offset)
 {
 #if BX_DEBUGGER
@@ -40,17 +36,19 @@ void BX_CPU_C::debug_disasm_instruction(bx_address offset)
   size_t i=0;
 
   static char letters[] = "0123456789ABCDEF";
-  static disassembler bx_disassemble;
   unsigned remainsInPage = 0x1000 - PAGE_OFFSET(offset);
 
   bx_bool valid = dbg_xlate_linear2phy(get_laddr(BX_SEG_REG_CS, offset), &phy_addr);
   if (valid) {
     BX_MEM(0)->dbg_fetch_mem(BX_CPU_THIS, phy_addr, 16, instr_buf);
-    unsigned isize = bx_disassemble.disasm(
-        BX_CPU_THIS_PTR sregs[BX_SEG_REG_CS].cache.u.segment.d_b,
-        BX_CPU_THIS_PTR cpu_mode == BX_MODE_LONG_64,
-        BX_CPU_THIS_PTR get_segment_base(BX_SEG_REG_CS), offset,
-        instr_buf, char_buf+i);
+
+    bxInstruction_c instr;
+    disasm(instr_buf,
+      BX_CPU_THIS_PTR sregs[BX_SEG_REG_CS].cache.u.segment.d_b,
+      BX_CPU_THIS_PTR cpu_mode == BX_MODE_LONG_64, char_buf+i, &instr,
+      BX_CPU_THIS_PTR get_segment_base(BX_SEG_REG_CS), offset, BX_DISASM_INTEL);
+    unsigned isize = instr.ilen();
+
     if (isize <= remainsInPage) {
       i=strlen(char_buf);
       char_buf[i++] = ' ';
@@ -72,8 +70,6 @@ void BX_CPU_C::debug_disasm_instruction(bx_address offset)
   }
 #endif  // #if BX_DEBUGGER
 }
-
-#endif  // #if BX_DISASM
 
 const char* cpu_mode_string(unsigned cpu_mode)
 {
@@ -98,7 +94,7 @@ const char* cpu_state_string(unsigned state)
      "in shutdown",
      "waiting for SIPI",
      "executing mwait",
-     "executing mwait inhibit interrups",
+     "executing mwait inhibit interrupts",
      "unknown state"
   };
 
@@ -249,9 +245,7 @@ void BX_CPU_C::debug(bx_address offset)
 #endif
   }
 
-#if BX_DISASM
   debug_disasm_instruction(offset);
-#endif  // #if BX_DISASM
 }
 
 

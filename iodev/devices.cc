@@ -1,8 +1,8 @@
 /////////////////////////////////////////////////////////////////////////
-// $Id: devices.cc 13241 2017-05-28 08:13:06Z vruppert $
+// $Id: devices.cc 14072 2021-01-08 19:46:31Z vruppert $
 /////////////////////////////////////////////////////////////////////////
 //
-//  Copyright (C) 2002-2017  The Bochs Project
+//  Copyright (C) 2002-2021  The Bochs Project
 //
 //  I/O port handlers API Copyright (C) 2003 by Frank Cornelis
 //
@@ -24,12 +24,14 @@
 
 
 #include "iodev.h"
+#include "gui/keymap.h"
 
 #include "iodev/virt_timer.h"
 #include "iodev/slowdown_timer.h"
 #include "iodev/sound/soundmod.h"
 #include "iodev/network/netmod.h"
 #include "iodev/usb/usb_common.h"
+#include "iodev/hdimage/hdimage.h"
 
 #define LOG_THIS bx_devices.
 
@@ -63,17 +65,15 @@ bx_devices_c::bx_devices_c()
 
 bx_devices_c::~bx_devices_c()
 {
-  // nothing needed for now
   timer_handle = BX_NULL_TIMER_HANDLE;
+  bx_hdimage_ctl.exit();
 }
 
 void bx_devices_c::init_stubs()
 {
   pluginCmosDevice = &stubCmos;
   pluginDmaDevice = &stubDma;
-  pluginFloppyDevice = &stubFloppy;
   pluginHardDrive = &stubHardDrive;
-  pluginKeyboard = &stubKeyboard;
   pluginPicDevice = &stubPic;
   pluginPitDevice = &stubPit;
   pluginSpeaker = &stubSpeaker;
@@ -97,13 +97,15 @@ void bx_devices_c::init_stubs()
 void bx_devices_c::init(BX_MEM_C *newmem)
 {
 #if BX_SUPPORT_PCI
-  unsigned chipset;
+  unsigned chipset = SIM->get_param_enum(BXPN_PCI_CHIPSET)->get();
+  unsigned max_pci_slots = BX_N_PCI_SLOTS;
 #endif
-  unsigned i;
+  unsigned i, argc;
   const char def_name[] = "Default";
-  const char *vga_ext;
+  const char *vga_ext, *options;
+  char *argv[16];
 
-  BX_DEBUG(("Init $Id: devices.cc 13241 2017-05-28 08:13:06Z vruppert $"));
+  BX_DEBUG(("Init $Id: devices.cc 14072 2021-01-08 19:46:31Z vruppert $"));
   mem = newmem;
 
   /* set builtin default handlers, will be overwritten by the real default handler */
@@ -136,10 +138,13 @@ void bx_devices_c::init(BX_MEM_C *newmem)
   }
 
   // removable devices init
-  bx_keyboard.dev = NULL;
-  bx_keyboard.gen_scancode = NULL;
+  for (i=0; i < 2; i++) {
+    bx_keyboard[i].dev = NULL;
+    bx_keyboard[i].gen_scancode = NULL;
+    bx_keyboard[i].led_mask = 0;
+  }
   for (i = 0; i < BX_KEY_NBKEYS; i++) {
-    bx_keyboard.bxkey_state[i] = 0;
+    bx_keyboard[0].bxkey_state[i] = 0;
   }
   for (i=0; i < 2; i++) {
     bx_mouse[i].dev = NULL;
@@ -149,6 +154,18 @@ void bx_devices_c::init(BX_MEM_C *newmem)
   // common mouse settings
   mouse_captured = SIM->get_param_bool(BXPN_MOUSE_ENABLED)->get();
   mouse_type = SIM->get_param_enum(BXPN_MOUSE_TYPE)->get();
+
+  // initialize paste feature
+  paste.buf = NULL;
+  paste.buf_len = 0;
+  paste.buf_ptr = 0;
+  paste.service = 0;
+  paste.stop = 0;
+  paste_delay_changed(SIM->get_param_num(BXPN_KBD_PASTE_DELAY)->get());
+
+  // init runtime parameters
+  SIM->get_param_num(BXPN_KBD_PASTE_DELAY)->set_handler(param_handler);
+  SIM->get_param_num(BXPN_MOUSE_ENABLED)->set_handler(param_handler);
 
   // register as soon as possible - the devices want to have their timers !
   bx_virt_timer.init();
@@ -160,7 +177,6 @@ void bx_devices_c::init(BX_MEM_C *newmem)
   // "by hand" in this file.  Basically, we're using core plugins when we
   // want to control the init order.
   //
-  PLUG_load_plugin(hdimage, PLUGTYPE_CORE);
 #if BX_NETWORKING
   network_enabled = is_network_enabled();
   if (network_enabled)
@@ -173,26 +189,51 @@ void bx_devices_c::init(BX_MEM_C *newmem)
   }
 #endif
   // PCI logic (i440FX)
+  memset(argv, 0, sizeof(argv));
   pci.enabled = SIM->get_param_bool(BXPN_PCI_ENABLED)->get();
   if (pci.enabled) {
 #if BX_SUPPORT_PCI
-    chipset = SIM->get_param_enum(BXPN_PCI_CHIPSET)->get();
+    if (chipset == BX_PCI_CHIPSET_I430FX) {
+      pci.advopts = (BX_PCI_ADVOPT_NOHPET | BX_PCI_ADVOPT_NOACPI);
+    } else {
+      pci.advopts = 0;
+    }
+    options = SIM->get_param_string(BXPN_PCI_ADV_OPTS)->getptr();
+    argc = bx_split_option_list("PCI advanced options", options, argv, 16);
+    for (i = 0; i < argc; i++) {
+      if (!strcmp(argv[i], "noacpi")) {
+        if (chipset == BX_PCI_CHIPSET_I440FX) {
+          pci.advopts = BX_PCI_ADVOPT_NOACPI;
+        } else {
+          BX_ERROR(("Disabling ACPI not supported by PCI chipset"));
+        }
+      } else if (!strcmp(argv[i], "nohpet")) {
+        pci.advopts = BX_PCI_ADVOPT_NOHPET;
+      } else {
+        BX_ERROR(("Unknown advanced PCI option '%s'", argv[i]));
+      }
+      free(argv[i]);
+      argv[i] = NULL;
+    }
     PLUG_load_plugin(pci, PLUGTYPE_CORE);
     PLUG_load_plugin(pci2isa, PLUGTYPE_CORE);
 #if BX_SUPPORT_PCIUSB
     usb_enabled = is_usb_enabled();
     if (usb_enabled)
       bx_usbdev_ctl.init();
-    if (chipset == BX_PCI_CHIPSET_I440FX) {
-      // UHCI is a part of the PIIX3, so load / enable it
+    if ((chipset == BX_PCI_CHIPSET_I440FX) ||
+        (chipset == BX_PCI_CHIPSET_I440BX)) {
+      // UHCI is a part of the PIIX3/PIIX4, so load / enable it
       if (!PLUG_device_present("usb_uhci")) {
         PLUG_load_plugin(usb_uhci, PLUGTYPE_OPTIONAL);
       }
       SIM->get_param_bool(BXPN_UHCI_ENABLED)->set(1);
     }
 #endif
-    if (chipset == BX_PCI_CHIPSET_I440FX) {
+    if ((pci.advopts & BX_PCI_ADVOPT_NOACPI) == 0) {
       PLUG_load_plugin(acpi, PLUGTYPE_STANDARD);
+    }
+    if ((pci.advopts & BX_PCI_ADVOPT_NOHPET) == 0) {
       PLUG_load_plugin(hpet, PLUGTYPE_STANDARD);
     }
 #else
@@ -210,8 +251,10 @@ void bx_devices_c::init(BX_MEM_C *newmem)
 #else
     BX_PANIC(("Bochs is not compiled with Cirrus support"));
 #endif
-  } else {
+  } else if (!strcmp(vga_ext, "vbe") || !strcmp(vga_ext, "none")) {
     PLUG_load_plugin(vga, PLUGTYPE_CORE);
+  } else if (pluginVgaDevice == &stubVga) {
+    BX_PANIC(("No VGA compatible display adapter present"));
   }
   PLUG_load_plugin(floppy, PLUGTYPE_CORE);
 
@@ -248,7 +291,7 @@ void bx_devices_c::init(BX_MEM_C *newmem)
       pci.pci_handler[i].handler = NULL;
     }
 
-    for (i=0; i < 0x100; i++) {
+    for (i=0; i < 0x101; i++) {
       pci.handler_id[i] = BX_MAX_PCI_DEVICES;  // not assigned
     }
 
@@ -256,13 +299,19 @@ void bx_devices_c::init(BX_MEM_C *newmem)
       pci.slot_used[i] = 0;  // no device connected
     }
 
+    if (chipset == BX_PCI_CHIPSET_I440BX) {
+      pci.map_slot_to_dev = 8;
+    } else {
+      pci.map_slot_to_dev = 2;
+    }
+
     // confAddr accepts dword i/o only
-    DEV_register_ioread_handler(this, read_handler, 0x0CF8, "i440FX", 4);
-    DEV_register_iowrite_handler(this, write_handler, 0x0CF8, "i440FX", 4);
+    DEV_register_ioread_handler(this, read_handler, 0x0CF8, "PCI confAddr", 4);
+    DEV_register_iowrite_handler(this, write_handler, 0x0CF8, "PCI confAddr", 4);
 
     for (i=0x0CFC; i<=0x0CFF; i++) {
-      DEV_register_ioread_handler(this, read_handler, i, "i440FX", 7);
-      DEV_register_iowrite_handler(this, write_handler, i, "i440FX", 7);
+      DEV_register_ioread_handler(this, read_handler, i, "PCI confData", 7);
+      DEV_register_iowrite_handler(this, write_handler, i, "PCI confData", 7);
     }
   }
 #endif
@@ -294,9 +343,16 @@ void bx_devices_c::init(BX_MEM_C *newmem)
     DEV_cmos_set_reg(0x5d, memory_above_4gb >> 32);
   }
 
-  // TODO: add support for a comma-separated list of BIOS options
-  if (!strcmp(SIM->get_param_string(BXPN_ROM_OPTIONS)->getptr(), "fastboot")) {
-    DEV_cmos_set_reg(0x3f, 0x01);
+  options = SIM->get_param_string(BXPN_ROM_OPTIONS)->getptr();
+  argc = bx_split_option_list("ROM image options", options, argv, 16);
+  for (i = 0; i < argc; i++) {
+    if (!strcmp(argv[i], "fastboot")) {
+      DEV_cmos_set_reg(0x3f, 0x01);
+    } else {
+      BX_ERROR(("Unknown ROM image option '%s'", argv[i]));
+    }
+    free(argv[i]);
+    argv[i] = NULL;
   }
 
   if (timer_handle != BX_NULL_TIMER_HANDLE) {
@@ -320,7 +376,14 @@ void bx_devices_c::init(BX_MEM_C *newmem)
   char *device;
 
   if (pci.enabled) {
-    for (i=0; i<BX_N_PCI_SLOTS; i++) {
+    if (chipset == BX_PCI_CHIPSET_I440BX) {
+      device = SIM->get_param_string("pci.slot.5")->getptr();
+      if ((strlen(device) > 0) && !pci.slot_used[4]) {
+        BX_PANIC(("Unknown plugin '%s' at AGP slot", device));
+      }
+      max_pci_slots = 4;
+    }
+    for (i = 0; i < max_pci_slots; i++) {
       sprintf(devname, "pci.slot.%d", i+1);
       device = SIM->get_param_string(devname)->getptr();
       if ((strlen(device) > 0) && !pci.slot_used[i]) {
@@ -341,6 +404,9 @@ void bx_devices_c::reset(unsigned type)
   mem->disable_smram();
   bx_reset_plugins(type);
   release_keys();
+  if (paste.buf != NULL) {
+    paste.stop = 1;
+  }
 }
 
 void bx_devices_c::register_state()
@@ -391,7 +457,6 @@ void bx_devices_c::exit()
   // unload optional and user plugins first
   bx_unload_plugins();
   bx_unload_core_plugins();
-  PLUG_unload_plugin(hdimage);
 #if BX_NETWORKING
   if (network_enabled)
     bx_netmod_ctl.exit();
@@ -404,6 +469,15 @@ void bx_devices_c::exit()
   if (usb_enabled)
     bx_usbdev_ctl.exit();
 #endif
+  // remove runtime parameter handlers
+  SIM->get_param_num(BXPN_KBD_PASTE_DELAY)->set_handler(NULL);
+  SIM->get_param_num(BXPN_MOUSE_ENABLED)->set_handler(NULL);
+  if (paste.buf != NULL) {
+    delete [] paste.buf;
+    paste.buf = NULL;
+  }
+  bx_keyboard[0].dev = NULL;
+  bx_mouse[0].dev = NULL;
   init_stubs();
 }
 
@@ -433,20 +507,20 @@ Bit32u bx_devices_c::read(Bit32u address, unsigned io_len)
     case 0x0CFE:
     case 0x0CFF:
     {
-      Bit32u handle, retval;
-      Bit8u devfunc, regnum;
+      Bit32u handle, retval = 0xffffffff;
+      Bit8u regnum;
+      Bit16u bus_devfunc;
 
-      if ((BX_DEV_THIS pci.confAddr & 0x80FF0000) == 0x80000000) {
-        devfunc = (BX_DEV_THIS pci.confAddr >> 8) & 0xff;
+      if ((BX_DEV_THIS pci.confAddr & 0x80fe0000) == 0x80000000) {
+        bus_devfunc = (BX_DEV_THIS pci.confAddr >> 8) & 0x1ff;
         regnum = (BX_DEV_THIS pci.confAddr & 0xfc) + (address & 0x03);
-        handle = BX_DEV_THIS pci.handler_id[devfunc];
-        if ((io_len <= 4) && (handle < BX_MAX_PCI_DEVICES))
-          retval = BX_DEV_THIS pci.pci_handler[handle].handler->pci_read_handler(regnum, io_len);
-        else
-          retval = 0xFFFFFFFF;
+        if (bus_devfunc <= 0x100) {
+          handle = BX_DEV_THIS pci.handler_id[bus_devfunc];
+          if ((io_len <= 4) && (handle < BX_MAX_PCI_DEVICES)) {
+            retval = BX_DEV_THIS pci.pci_handler[handle].handler->pci_read_handler(regnum, io_len);
+          }
+        }
       }
-      else
-        retval = 0xFFFFFFFF;
       return retval;
     }
 #endif
@@ -468,6 +542,11 @@ void bx_devices_c::write(Bit32u address, Bit32u value, unsigned io_len)
 #else
   UNUSED(this_ptr);
 #endif  // !BX_USE_DEV_SMF
+#if BX_SUPPORT_PCI
+  Bit8u bus, devfunc, handle;
+  Bit16u bus_devfunc;
+  bx_pci_device_c *dev = NULL;
+#endif
 
   switch (address) {
     case 0x0092:
@@ -483,11 +562,28 @@ void bx_devices_c::write(Bit32u address, Bit32u value, unsigned io_len)
 #if BX_SUPPORT_PCI
     case 0xCF8:
       BX_DEV_THIS pci.confAddr = value;
-      if ((value & 0x80FFFF00) == 0x80000000) {
-        BX_DEBUG(("440FX PMC register 0x%02x selected", value & 0xfc));
-      } else if ((value & 0x80000000) == 0x80000000) {
-        BX_DEBUG(("440FX request for bus 0x%02x device 0x%02x function 0x%02x",
-                  (value >> 16) & 0xFF, (value >> 11) & 0x1F, (value >> 8) & 0x07));
+      if ((value & 0x80000000) == 0x80000000) {
+        bus = (BX_DEV_THIS pci.confAddr >> 16) & 0xff;
+        devfunc = (BX_DEV_THIS pci.confAddr >> 8) & 0xff;
+        bus_devfunc = (bus << 8) | devfunc;
+        if (bus_devfunc <= 0x100) {
+          handle = BX_DEV_THIS pci.handler_id[bus_devfunc];
+          if (handle != BX_MAX_PCI_DEVICES) {
+            dev = BX_DEV_THIS pci.pci_handler[handle].handler;
+          }
+        }
+        if ((bus == 0) && (devfunc == 0x00)) {
+          BX_DEBUG(("%s register 0x%02x selected", dev->get_name(), value & 0xfc));
+        } else if (dev != NULL) {
+          BX_DEBUG(("PCI: request for bus %d device %d function %d (%s)", bus,
+                    (devfunc >> 3), devfunc & 0x07, dev->get_name()));
+        } else if (bus == 1) {
+          BX_DEBUG(("PCI: request for AGP bus device %d function %d", (devfunc >> 3),
+                    devfunc & 0x07));
+        } else {
+          BX_DEBUG(("PCI: request for bus %d device %d function %d", bus,
+                    (devfunc >> 3), devfunc & 0x07));
+        }
       }
       break;
 
@@ -495,16 +591,14 @@ void bx_devices_c::write(Bit32u address, Bit32u value, unsigned io_len)
     case 0xCFD:
     case 0xCFE:
     case 0xCFF:
-      if ((BX_DEV_THIS pci.confAddr & 0x80FF0000) == 0x80000000) {
-        Bit8u devfunc = (BX_DEV_THIS pci.confAddr >> 8) & 0xff;
+      if ((BX_DEV_THIS pci.confAddr & 0x80fe0000) == 0x80000000) {
+        bus_devfunc = (BX_DEV_THIS pci.confAddr >> 8) & 0x1ff;
         Bit8u regnum = (BX_DEV_THIS pci.confAddr & 0xfc) + (address & 0x03);
-        Bit32u handle = BX_DEV_THIS pci.handler_id[devfunc];
-        if ((io_len <= 4) && (handle < BX_MAX_PCI_DEVICES)) {
-          if (((regnum>=4) && (regnum<=7)) || (regnum==12) || (regnum==13) || (regnum>14)) {
-            BX_DEV_THIS pci.pci_handler[handle].handler->pci_write_handler(regnum, value, io_len);
+        if (bus_devfunc <= 0x100) {
+          handle = BX_DEV_THIS pci.handler_id[bus_devfunc];
+          if ((io_len <= 4) && (handle < BX_MAX_PCI_DEVICES)) {
+            BX_DEV_THIS pci.pci_handler[handle].handler->pci_write_handler_common(regnum, value, io_len);
           }
-          else
-            BX_DEBUG(("read only register, write ignored"));
         }
       }
       break;
@@ -537,6 +631,12 @@ void bx_devices_c::timer_handler(void *this_ptr)
 
 void bx_devices_c::timer()
 {
+  if (++paste.counter >= paste.delay) {
+    // after the paste delay, consider adding moving more chars
+    // from the paste buffer to the keyboard buffer.
+    service_paste_buf();
+    paste.counter = 0;
+  }
   SIM->periodic();
   if (!bx_pc_system.kill_bochs_request)
     bx_gui->handle_events();
@@ -1059,19 +1159,41 @@ bx_bool bx_devices_c::is_usb_enabled(void)
 }
 
 // removable keyboard/mouse registration
-void bx_devices_c::register_removable_keyboard(void *dev, bx_kbd_gen_scancode_t kbd_gen_scancode)
+void bx_devices_c::register_default_keyboard(void *dev, bx_kbd_gen_scancode_t kbd_gen_scancode,
+                                             bx_kbd_get_elements_t kbd_get_elements)
 {
-  if (bx_keyboard.dev == NULL) {
-    bx_keyboard.dev = dev;
-    bx_keyboard.gen_scancode = kbd_gen_scancode;
+  if (bx_keyboard[0].dev == NULL) {
+    bx_keyboard[0].dev = dev;
+    bx_keyboard[0].gen_scancode = kbd_gen_scancode;
+    bx_keyboard[0].get_elements = kbd_get_elements;
+    bx_keyboard[0].led_mask = BX_KBD_LED_MASK_ALL;
+    // add keyboard LEDs to the statusbar
+    statusbar_id[BX_KBD_LED_NUM] = bx_gui->register_statusitem("NUM");
+    statusbar_id[BX_KBD_LED_CAPS] = bx_gui->register_statusitem("CAPS");
+    statusbar_id[BX_KBD_LED_SCRL] = bx_gui->register_statusitem("SCRL");
+  }
+}
+
+void bx_devices_c::register_removable_keyboard(void *dev, bx_kbd_gen_scancode_t kbd_gen_scancode,
+                                               bx_kbd_get_elements_t kbd_get_elements,
+                                               Bit8u led_mask)
+{
+  if (bx_keyboard[1].dev == NULL) {
+    bx_keyboard[1].dev = dev;
+    bx_keyboard[1].gen_scancode = kbd_gen_scancode;
+    bx_keyboard[1].get_elements = kbd_get_elements;
+    bx_keyboard[0].led_mask &= ~led_mask;
+    bx_keyboard[1].led_mask = led_mask;
   }
 }
 
 void bx_devices_c::unregister_removable_keyboard(void *dev)
 {
-  if (dev == bx_keyboard.dev) {
-    bx_keyboard.dev = NULL;
-    bx_keyboard.gen_scancode = NULL;
+  if (dev == bx_keyboard[1].dev) {
+    bx_keyboard[1].dev = NULL;
+    bx_keyboard[1].gen_scancode = NULL;
+    bx_keyboard[0].led_mask |= bx_keyboard[1].led_mask;
+    bx_keyboard[1].led_mask = 0;
   }
 }
 
@@ -1109,22 +1231,130 @@ void bx_devices_c::gen_scancode(Bit32u key)
 {
   bx_bool ret = 0;
 
-  bx_keyboard.bxkey_state[key & 0xff] = ((key & BX_KEY_RELEASED) == 0);
-  if (bx_keyboard.dev != NULL) {
-    ret = bx_keyboard.gen_scancode(bx_keyboard.dev, key);
+  bx_keyboard[0].bxkey_state[key & 0xff] = ((key & BX_KEY_RELEASED) == 0);
+  if ((paste.buf != NULL) && (!paste.service)) {
+    paste.stop = 1;
+    return;
   }
-  if (ret == 0) {
-    pluginKeyboard->gen_scancode(key);
+  if (bx_keyboard[1].dev != NULL) {
+    ret = bx_keyboard[1].gen_scancode(bx_keyboard[1].dev, key);
   }
+  if ((ret == 0) && (bx_keyboard[0].dev != NULL)) {
+    bx_keyboard[0].gen_scancode(bx_keyboard[0].dev, key);
+  }
+}
+
+Bit8u bx_devices_c::kbd_get_elements(void)
+{
+  if (bx_keyboard[1].dev != NULL) {
+    return bx_keyboard[1].get_elements(bx_keyboard[1].dev);
+  }
+  if (bx_keyboard[0].dev != NULL) {
+    return bx_keyboard[0].get_elements(bx_keyboard[0].dev);
+  }
+  return BX_KBD_ELEMENTS;
 }
 
 void bx_devices_c::release_keys()
 {
   for (int i = 0; i < BX_KEY_NBKEYS; i++) {
-    if (bx_keyboard.bxkey_state[i]) {
+    if (bx_keyboard[0].bxkey_state[i]) {
       gen_scancode(i | BX_KEY_RELEASED);
-      bx_keyboard.bxkey_state[i] = 0;
+      bx_keyboard[0].bxkey_state[i] = 0;
     }
+  }
+}
+
+// service_paste_buf() transfers data from the paste buffer to the hardware
+// keyboard buffer.  It tries to transfer as many chars as possible at a
+// time, but because different chars require different numbers of scancodes
+// we have to be conservative.  Note that this process depends on the
+// keymap tables to know what chars correspond to what keys, and which
+// chars require a shift or other modifier.
+void bx_devices_c::service_paste_buf()
+{
+  if (!paste.buf) return;
+  BX_DEBUG(("service_paste_buf: ptr at %d out of %d", paste.buf_ptr, paste.buf_len));
+  int fill_threshold = 8;
+  paste.service = 1;
+  while ((paste.buf_ptr < paste.buf_len) && !paste.stop) {
+    if (kbd_get_elements() >= fill_threshold) {
+      paste.service = 0;
+      return;
+    }
+    // there room in the buffer for a keypress and a key release.
+    // send one keypress and a key release.
+    Bit8u byte = paste.buf[paste.buf_ptr];
+    BXKeyEntry *entry = bx_keymap.findAsciiChar(byte);
+    if (!entry) {
+      BX_ERROR(("paste character 0x%02x ignored", byte));
+    } else {
+      BX_DEBUG(("pasting character 0x%02x. baseKey is %04x", byte, entry->baseKey));
+      if (entry->modKey != BX_KEYMAP_UNKNOWN)
+        gen_scancode(entry->modKey);
+      gen_scancode(entry->baseKey);
+      gen_scancode(entry->baseKey | BX_KEY_RELEASED);
+      if (entry->modKey != BX_KEYMAP_UNKNOWN)
+        gen_scancode(entry->modKey | BX_KEY_RELEASED);
+    }
+    paste.buf_ptr++;
+  }
+  // reached end of pastebuf.  free the memory it was using.
+  delete [] paste.buf;
+  paste.buf = NULL;
+  paste.stop = 0;
+  paste.service = 0;
+}
+
+// paste_bytes schedules an arbitrary number of ASCII characters to be
+// inserted into the hardware queue as it become available.  Any previous
+// paste which is still in progress will be thrown out.  BYTES is a pointer
+// to a region of memory containing the chars to be pasted. When the paste
+// is complete, the keyboard code will call delete [] bytes;
+void bx_devices_c::paste_bytes(Bit8u *data, Bit32s length)
+{
+  BX_DEBUG(("paste_bytes: %d bytes", length));
+  if (paste.buf) {
+    BX_ERROR(("previous paste was not completed!  %d chars lost",
+      paste.buf_len - paste.buf_ptr));
+    delete [] paste.buf;  // free the old paste buffer
+  }
+  paste.buf = data;
+  paste.buf_ptr = 0;
+  paste.buf_len = length;
+  service_paste_buf();
+}
+
+Bit64s bx_devices_c::param_handler(bx_param_c *param, int set, Bit64s val)
+{
+  if (set) {
+    char pname[BX_PATHNAME_LEN];
+    param->get_param_path(pname, BX_PATHNAME_LEN);
+    if (set) {
+      if (!strcmp(pname, BXPN_KBD_PASTE_DELAY)) {
+        bx_devices.paste_delay_changed((Bit32u)val);
+      } else if (!strcmp(pname, BXPN_MOUSE_ENABLED)) {
+        bx_gui->mouse_enabled_changed(val!=0);
+        bx_devices.mouse_enabled_changed(val!=0);
+      } else {
+        BX_PANIC(("param_handler called with unexpected parameter '%s'", pname));
+      }
+    }
+  }
+  return val;
+}
+
+void bx_devices_c::paste_delay_changed(Bit32u value)
+{
+  paste.delay = value / BX_IODEV_HANDLER_PERIOD;
+  paste.counter = 0;
+  BX_INFO(("will paste characters every %d iodev timer ticks", paste.delay));
+}
+
+void bx_devices_c::kbd_set_indicator(Bit8u devid, Bit8u ledid, bx_bool state)
+{
+  if (bx_keyboard[devid].led_mask & (1 << ledid)) {
+    bx_gui->statusbar_setitem(statusbar_id[ledid], state, devid);
   }
 }
 
@@ -1166,46 +1396,59 @@ void bx_devices_c::mouse_motion(int delta_x, int delta_y, int delta_z, unsigned 
 // generic PCI support
 bx_bool bx_devices_c::register_pci_handlers(bx_pci_device_c *dev,
                                             Bit8u *devfunc, const char *name,
-                                            const char *descr)
+                                            const char *descr, Bit8u bus)
 {
-  unsigned i, handle;
+  unsigned i, handle, max_pci_slots = BX_N_PCI_SLOTS;
   int first_free_slot = -1;
+  Bit16u bus_devfunc = *devfunc;
   char devname[80];
   char *device;
 
   if (strcmp(name, "pci") && strcmp(name, "pci2isa") && strcmp(name, "pci_ide")
       && ((*devfunc & 0xf8) == 0x00)) {
-    for (i = 0; i < BX_N_PCI_SLOTS; i++) {
-      sprintf(devname, "pci.slot.%d", i+1);
-      device = SIM->get_param_string(devname)->getptr();
-      if (strlen(device) > 0) {
-        if (!strcmp(name, device)) {
-          *devfunc = ((i + 2) << 3) | (*devfunc & 0x07);
+    if (SIM->get_param_enum(BXPN_PCI_CHIPSET)->get() == BX_PCI_CHIPSET_I440BX) {
+      max_pci_slots = 4;
+    }
+    if (bus == 0) {
+      for (i = 0; i < max_pci_slots; i++) {
+        sprintf(devname, "pci.slot.%d", i+1);
+        device = SIM->get_param_string(devname)->getptr();
+        if (strlen(device) > 0) {
+          if (!strcmp(name, device) && !pci.slot_used[i]) {
+            *devfunc = ((i + pci.map_slot_to_dev) << 3) | (*devfunc & 0x07);
+            pci.slot_used[i] = 1;
+            BX_INFO(("PCI slot #%d used by plugin '%s'", i+1, name));
+            break;
+          }
+        } else if (first_free_slot == -1) {
+          first_free_slot = i;
+        }
+      }
+      if ((*devfunc & 0xf8) == 0x00) {
+        // auto-assign device to PCI slot if possible
+        if (first_free_slot != -1) {
+          i = (unsigned)first_free_slot;
+          sprintf(devname, "pci.slot.%d", i+1);
+          SIM->get_param_string(devname)->set(name);
+          *devfunc = ((i + pci.map_slot_to_dev) << 3) | (*devfunc & 0x07);
           pci.slot_used[i] = 1;
           BX_INFO(("PCI slot #%d used by plugin '%s'", i+1, name));
-          break;
+        } else {
+          BX_ERROR(("Plugin '%s' not connected to a PCI slot", name));
+          return 0;
         }
-      } else if (first_free_slot == -1) {
-        first_free_slot = i;
       }
-    }
-    if ((*devfunc & 0xf8) == 0x00) {
-      // auto-assign device to PCI slot if possible
-      if (first_free_slot != -1) {
-        i = (unsigned)first_free_slot;
-        sprintf(devname, "pci.slot.%d", i+1);
-        SIM->get_param_string(devname)->set(name);
-        *devfunc = ((i + 2) << 3) | (*devfunc & 0x07);
-        pci.slot_used[i] = 1;
-        BX_INFO(("PCI slot #%d used by plugin '%s'", i+1, name));
-      } else {
-        BX_ERROR(("Plugin '%s' not connected to a PCI slot", name));
-        return 0;
-      }
+      bus_devfunc = *devfunc;
+    } else if ((bus == 1) && (max_pci_slots == 4)) {
+      pci.slot_used[4] = 1;
+      bus_devfunc = 0x100;
+    } else {
+      BX_PANIC(("Invalid bus number #%d", bus));
+      return 0;
     }
   }
   /* check if device/function is available */
-  if (pci.handler_id[*devfunc] == BX_MAX_PCI_DEVICES) {
+  if (pci.handler_id[bus_devfunc] == BX_MAX_PCI_DEVICES) {
     if (pci.num_pci_handlers >= BX_MAX_PCI_DEVICES) {
       BX_INFO(("too many PCI devices installed."));
       BX_PANIC(("  try increasing BX_MAX_PCI_DEVICES"));
@@ -1213,9 +1456,14 @@ bx_bool bx_devices_c::register_pci_handlers(bx_pci_device_c *dev,
     }
     handle = pci.num_pci_handlers++;
     pci.pci_handler[handle].handler = dev;
-    pci.handler_id[*devfunc] = handle;
-    BX_INFO(("%s present at device %d, function %d", descr, *devfunc >> 3,
-             *devfunc & 0x07));
+    pci.handler_id[bus_devfunc] = handle;
+    if (bus_devfunc < 0x100) {
+      BX_INFO(("%s present at device %d, function %d", descr, *devfunc >> 3,
+               *devfunc & 0x07));
+    } else {
+      BX_INFO(("%s present on AGP bus device #0", descr));
+    }
+    dev->set_name(descr);
     return 1; // device/function mapped successfully
   } else {
     return 0; // device/function not available, return false.
@@ -1225,20 +1473,17 @@ bx_bool bx_devices_c::register_pci_handlers(bx_pci_device_c *dev,
 bx_bool bx_devices_c::pci_set_base_mem(void *this_ptr, memory_handler_t f1, memory_handler_t f2,
                                        Bit32u *addr, Bit8u *pci_conf, unsigned size)
 {
-  Bit32u newbase;
-
-  Bit32u oldbase = *addr;
+  Bit32u oldbase = *addr, newbase;
   Bit32u mask = ~(size - 1);
   Bit8u pci_flags = pci_conf[0x00] & 0x0f;
   if ((pci_flags & 0x06) > 0) {
-    BX_PANIC(("PCI base memory flag 0x%02x not supported", pci_flags));
-    return 0;
+    BX_ERROR(("Ignoring PCI base memory flag 0x%02x for now", pci_flags));
   }
   pci_conf[0x00] &= (mask & 0xf0);
   pci_conf[0x01] &= (mask >> 8) & 0xff;
   pci_conf[0x02] &= (mask >> 16) & 0xff;
   pci_conf[0x03] &= (mask >> 24) & 0xff;
-  ReadHostDWordFromLittleEndian(pci_conf, newbase);
+  newbase = ReadHostDWordFromLittleEndian((Bit32u*)pci_conf);
   pci_conf[0x00] |= pci_flags;
   if (newbase != mask && newbase != oldbase) { // skip PCI probe
     if (oldbase > 0) {
@@ -1258,14 +1503,12 @@ bx_bool bx_devices_c::pci_set_base_io(void *this_ptr, bx_read_handler_t f1, bx_w
                                       const Bit8u *iomask, const char *name)
 {
   unsigned i;
-  Bit32u newbase;
-
-  Bit32u oldbase = *addr;
+  Bit32u oldbase = *addr, newbase;
   Bit16u mask = ~(size - 1);
   Bit8u pci_flags = pci_conf[0x00] & 0x03;
   pci_conf[0x00] &= (mask & 0xfc);
   pci_conf[0x01] &= (mask >> 8);
-  ReadHostDWordFromLittleEndian(pci_conf, newbase);
+  newbase = ReadHostDWordFromLittleEndian((Bit32u*)pci_conf);
   pci_conf[0x00] |= pci_flags;
   if (((newbase & 0xfffc) != mask) && (newbase != oldbase)) { // skip PCI probe
     if (oldbase > 0) {
@@ -1294,7 +1537,8 @@ bx_bool bx_devices_c::pci_set_base_io(void *this_ptr, bx_read_handler_t f1, bx_w
 #undef LOG_THIS
 #define LOG_THIS
 
-void bx_pci_device_c::init_pci_conf(Bit16u vid, Bit16u did, Bit8u rev, Bit32u classc, Bit8u headt)
+void bx_pci_device_c::init_pci_conf(Bit16u vid, Bit16u did, Bit8u rev,
+                                    Bit32u classc, Bit8u headt, Bit8u intpin)
 {
   memset(pci_conf, 0, 256);
   pci_conf[0x00] = (Bit8u)(vid & 0xff);
@@ -1306,11 +1550,63 @@ void bx_pci_device_c::init_pci_conf(Bit16u vid, Bit16u did, Bit8u rev, Bit32u cl
   pci_conf[0x0a] = (Bit8u)((classc >> 8) & 0xff);
   pci_conf[0x0b] = (Bit8u)((classc >> 16) & 0xff);
   pci_conf[0x0e] = headt;
+  pci_conf[0x3d] = intpin;
+}
+
+void bx_pci_device_c::init_bar_io(Bit8u num, Bit16u size, bx_read_handler_t rh,
+                                  bx_write_handler_t wh, const Bit8u *mask)
+{
+  if (num < 6) {
+    pci_bar[num].type = BX_PCI_BAR_TYPE_IO;
+    pci_bar[num].size = size;
+    pci_bar[num].io.rh = rh;
+    pci_bar[num].io.wh = wh;
+    pci_bar[num].io.mask = mask;
+    pci_conf[0x10 + num * 4] = 0x01;
+  }
+}
+
+void bx_pci_device_c::init_bar_mem(Bit8u num, Bit32u size, memory_handler_t rh,
+                                   memory_handler_t wh)
+{
+  if (num < 6) {
+    pci_bar[num].type = BX_PCI_BAR_TYPE_MEM;
+    pci_bar[num].size = size;
+    pci_bar[num].mem.rh = rh;
+    pci_bar[num].mem.wh = wh;
+  }
 }
 
 void bx_pci_device_c::register_pci_state(bx_list_c *list)
 {
   new bx_shadow_data_c(list, "pci_conf", pci_conf, 256, 1);
+}
+
+void bx_pci_device_c::after_restore_pci_state(memory_handler_t mem_read_handler)
+{
+  for (int i = 0; i < 6; i++) {
+    if (pci_bar[i].type == BX_PCI_BAR_TYPE_MEM) {
+      if (DEV_pci_set_base_mem(this, pci_bar[i].mem.rh, pci_bar[i].mem.wh,
+                           &pci_bar[i].addr, &pci_conf[0x10 + i * 4],
+                           pci_bar[i].size)) {
+        BX_INFO(("BAR #%d: mem base address = 0x%08x", i, pci_bar[i].addr));
+        pci_bar_change_notify();
+      }
+    } else if (pci_bar[i].type == BX_PCI_BAR_TYPE_IO) {
+      if (DEV_pci_set_base_io(this, pci_bar[i].io.rh, pci_bar[i].io.wh,
+                              &pci_bar[i].addr, &pci_conf[0x10 + i * 4],
+                              pci_bar[i].size, pci_bar[i].io.mask, pci_name)) {
+        BX_INFO(("BAR #%d: i/o base address = 0x%04x", i, pci_bar[i].addr));
+        pci_bar_change_notify();
+      }
+    }
+  }
+  if (pci_rom_size > 0) {
+    if (DEV_pci_set_base_mem(this, mem_read_handler, NULL, &pci_rom_address,
+                             &pci_conf[0x30], pci_rom_size)) {
+      BX_INFO(("new ROM address: 0x%08x", pci_rom_address));
+    }
+  }
 }
 
 void bx_pci_device_c::load_pci_rom(const char *path)
@@ -1370,6 +1666,84 @@ void bx_pci_device_c::load_pci_rom(const char *path)
   BX_INFO(("loaded PCI ROM '%s' (size=%u / PCI=%uk)", path, (unsigned) stat_buf.st_size, pci_rom_size >> 10));
 }
 
+// pci configuration space write callback handler (common registers)
+void bx_pci_device_c::pci_write_handler_common(Bit8u address, Bit32u value, unsigned io_len)
+{
+  Bit8u bnum, value8, oldval;
+  bx_bool bar_change = 0, rom_change = 0;
+
+  // ignore readonly registers
+  if ((address < 4) || ((address > 7) && (address < 12)) || (address == 14) ||
+      (address == 0x3d)) {
+    BX_DEBUG(("write to r/o PCI register 0x%02x ignored", address));
+    return;
+  }
+
+  // handle base address registers if header type bit #0 and #1 are clear
+  if (((pci_conf[0x0e] & 0x03) == 0) && (address >= 0x10) && (address < 0x28)) {
+    bnum = ((address - 0x10) >> 2);
+    if (pci_bar[bnum].type != BX_PCI_BAR_TYPE_NONE) {
+      BX_DEBUG_PCI_WRITE(address, value, io_len);
+      for (unsigned i=0; i<io_len; i++) {
+        value8 = (value >> (i*8)) & 0xff;
+        oldval = pci_conf[address+i];
+        if (((address+i) & 0x03) == 0) {
+          if (pci_bar[bnum].type == BX_PCI_BAR_TYPE_IO) {
+            value8 = (value8 & 0xfc) | 0x01;
+          } else {
+            value8 = (value8 & 0xf0) | (oldval & 0x0f);
+          }
+        }
+        bar_change |= (value8 != oldval);
+        pci_conf[address+i] = value8;
+      }
+      if (bar_change) {
+        if (pci_bar[bnum].type == BX_PCI_BAR_TYPE_IO) {
+          if (DEV_pci_set_base_io(this, pci_bar[bnum].io.rh, pci_bar[bnum].io.wh,
+                                  &pci_bar[bnum].addr, &pci_conf[0x10 + bnum * 4],
+                                  pci_bar[bnum].size, pci_bar[bnum].io.mask, pci_name)) {
+            BX_INFO(("BAR #%d: i/o base address = 0x%04x", bnum, pci_bar[bnum].addr));
+            pci_bar_change_notify();
+          }
+        } else {
+          if (DEV_pci_set_base_mem(this, pci_bar[bnum].mem.rh, pci_bar[bnum].mem.wh,
+                                   &pci_bar[bnum].addr, &pci_conf[0x10 + bnum * 4],
+                                   pci_bar[bnum].size)) {
+            BX_INFO(("BAR #%d: mem base address = 0x%08x", bnum, pci_bar[bnum].addr));
+            pci_bar_change_notify();
+          }
+        }
+      }
+    }
+  } else if ((address & 0xfc) == 0x30) {
+    BX_DEBUG_PCI_WRITE(address, value, io_len);
+    value &= (0xfffffc01 >> ((address & 0x03) * 8));
+    for (unsigned i=0; i<io_len; i++) {
+      value8 = (value >> (i*8)) & 0xff;
+      oldval = pci_conf[address+i];
+      rom_change |= (value8 != oldval);
+      pci_conf[address+i] = value8;
+    }
+    if (rom_change) {
+      if (DEV_pci_set_base_mem(this, pci_rom_read_handler, NULL,
+                               &pci_rom_address, &pci_conf[0x30],
+                               pci_rom_size)) {
+        BX_INFO(("new ROM address = 0x%08x", pci_rom_address));
+      }
+    }
+  } else if (address == 0x3c) {
+    value8 = (Bit8u)value;
+    if (value8 != pci_conf[0x3c]) {
+      if (pci_conf[0x3d] != 0) {
+        BX_INFO(("new IRQ line = %d", value8));
+      }
+      pci_conf[0x3c] = value8;
+    }
+  } else {
+    pci_write_handler(address, value, io_len);
+  }
+}
+
 // pci configuration space read callback handler
 Bit32u bx_pci_device_c::pci_read_handler(Bit8u address, unsigned io_len)
 {
@@ -1379,12 +1753,7 @@ Bit32u bx_pci_device_c::pci_read_handler(Bit8u address, unsigned io_len)
     value |= (pci_conf[address+i] << (i*8));
   }
 
-  if (io_len == 1)
-    BX_DEBUG(("read  PCI register 0x%02X value 0x%02X (len=1)", address, value));
-  else if (io_len == 2)
-    BX_DEBUG(("read  PCI register 0x%02X value 0x%04X (len=2)", address, value));
-  else if (io_len == 4)
-    BX_DEBUG(("read  PCI register 0x%02X value 0x%08X (len=4)", address, value));
+  BX_DEBUG_PCI_READ(address, value, io_len);
 
   return value;
 }

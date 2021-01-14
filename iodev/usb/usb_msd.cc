@@ -1,12 +1,12 @@
 /////////////////////////////////////////////////////////////////////////
-// $Id: usb_msd.cc 13284 2017-08-26 08:10:21Z vruppert $
+// $Id: usb_msd.cc 14067 2021-01-05 21:57:13Z vruppert $
 /////////////////////////////////////////////////////////////////////////
 //
 //  USB mass storage device support (ported from QEMU)
 //
 //  Copyright (c) 2006 CodeSourcery.
 //  Written by Paul Brook
-//  Copyright (C) 2009-2017  The Bochs Project
+//  Copyright (C) 2009-2021  The Bochs Project
 //
 //  This library is free software; you can redistribute it and/or
 //  modify it under the terms of the GNU Lesser General Public
@@ -333,7 +333,7 @@ static const Bit8u bx_msd_bos_descriptor3[] = {
 
 void usb_msd_restore_handler(void *dev, bx_list_c *conf);
 
-static int usb_cdrom_count = 0;
+static Bit8u usb_cdrom_count = 0;
 
 usb_msd_device_c::usb_msd_device_c(usbdev_type type, const char *filename)
 {
@@ -355,21 +355,22 @@ usb_msd_device_c::usb_msd_device_c(usbdev_type type, const char *filename)
     ptr1 = strtok(tmpfname, ":");
     ptr2 = strtok(NULL, ":");
     if ((ptr2 == NULL) || (strlen(ptr1) < 2)) {
-      s.image_mode = BX_HDIMAGE_MODE_FLAT;
-      s.fname = filename;
+      s.image_mode = strdup("flat");
+      strcpy(s.fname, filename);
     } else {
-      s.image_mode = SIM->hdimage_get_mode(ptr1);
-      s.fname = filename+strlen(ptr1)+1;
+      s.image_mode = strdup(ptr1);
+      strcpy(s.fname, filename+strlen(ptr1)+1);
     }
     s.journal[0] = 0;
     s.size = 0;
+    s.sect_size = 512;
   } else if (d.type == USB_DEV_TYPE_CDROM) {
     strcpy(d.devname, "BOCHS USB CDROM");
-    s.fname = filename;
+    strcpy(s.fname, filename);
     // config options
     bx_list_c *usb_rt = (bx_list_c*)SIM->get_param(BXPN_MENU_RUNTIME_USB);
-    sprintf(pname, "cdrom%d", ++usb_cdrom_count);
-    sprintf(label, "USB CD-ROM #%d Configuration", usb_cdrom_count);
+    sprintf(pname, "cdrom%u", ++usb_cdrom_count);
+    sprintf(label, "USB CD-ROM #%u Configuration", usb_cdrom_count);
     s.config = new bx_list_c(usb_rt, pname, label);
     s.config->set_options(bx_list_c::SERIES_ASK | bx_list_c::USE_BOX_TITLE);
     s.config->set_device_param(this);
@@ -404,6 +405,7 @@ usb_msd_device_c::~usb_msd_device_c(void)
   if (s.hdimage != NULL) {
     s.hdimage->close();
     delete s.hdimage;
+    free(s.image_mode);
   } else if (s.cdrom != NULL) {
     delete s.cdrom;
     if (SIM->is_wx_selected()) {
@@ -427,7 +429,7 @@ bx_bool usb_msd_device_c::set_option(const char *option)
       BX_ERROR(("Option 'journal' is only valid for USB disks"));
     }
   } else if (!strncmp(option, "size:", 5)) {
-    if ((d.type == USB_DEV_TYPE_DISK) && (s.image_mode == BX_HDIMAGE_MODE_VVFAT)) {
+    if ((d.type == USB_DEV_TYPE_DISK) && (!strcmp(s.image_mode, "vvfat"))) {
       s.size = (int)strtol(option+5, &suffix, 10);
       if (!strcmp(suffix, "G")) {
         s.size <<= 10;
@@ -445,6 +447,20 @@ bx_bool usb_msd_device_c::set_option(const char *option)
     } else {
       BX_ERROR(("Option 'size' is only valid for USB VVFAT disks"));
     }
+  } else if (!strncmp(option, "sect_size:", 10)) {
+    if (d.type == USB_DEV_TYPE_DISK) {
+      s.sect_size = (unsigned)strtol(option+10, &suffix, 10);
+      if (strlen(suffix) > 0) {
+        BX_ERROR(("Option 'sect_size': ignoring extra data"));
+      }
+      if ((s.sect_size != 512) && (s.sect_size != 1024) && (s.sect_size != 4096)) {
+        BX_ERROR(("Option 'sect_size': invalid value, using default"));
+        s.sect_size = 512;
+      }
+      return 1;
+    } else {
+      BX_ERROR(("Option 'sect_size' is only valid for USB disks"));
+    }
   }
   return 0;
 }
@@ -453,11 +469,14 @@ bx_bool usb_msd_device_c::init()
 {
   if (d.type == USB_DEV_TYPE_DISK) {
     s.hdimage = DEV_hdimage_init_image(s.image_mode, 0, s.journal);
-    if (s.image_mode == BX_HDIMAGE_MODE_VVFAT) {
+    if (!strcmp(s.image_mode, "vvfat")) {
       Bit64u hdsize = ((Bit64u)s.size) << 20;
       s.hdimage->cylinders = (unsigned)(hdsize/16.0/63.0/512.0);
       s.hdimage->heads = 16;
       s.hdimage->spt = 63;
+      s.hdimage->sect_size = 512;
+    } else {
+      s.hdimage->sect_size = s.sect_size;
     }
     if (s.hdimage->open(s.fname) < 0) {
       BX_ERROR(("could not open hard drive image file '%s'", s.fname));
@@ -465,7 +484,8 @@ bx_bool usb_msd_device_c::init()
     } else {
       s.scsi_dev = new scsi_device_t(s.hdimage, 0, usb_msd_command_complete, (void*)this);
     }
-    sprintf(s.info_txt, "USB HD: path='%s', mode='%s'", s.fname, hdimage_mode_names[s.image_mode]);
+    sprintf(s.info_txt, "USB HD: path='%s', mode='%s', sect_size=%d", s.fname,
+            s.image_mode, s.hdimage->sect_size);
   } else if (d.type == USB_DEV_TYPE_CDROM) {
     s.cdrom = DEV_hdimage_init_cdrom(s.fname);
     s.scsi_dev = new scsi_device_t(s.cdrom, 0, usb_msd_command_complete, (void*)this);
@@ -696,7 +716,7 @@ int usb_msd_device_c::handle_data(USBPacket *p)
 
           s.usb_buf = data;
           s.usb_len = len;
-          if (s.scsi_len) {
+          while (s.usb_len && s.scsi_len) {
             copy_data();
           }
           if (s.residue && s.usb_len) {
@@ -752,7 +772,7 @@ int usb_msd_device_c::handle_data(USBPacket *p)
             len = s.data_len;
           s.usb_buf = data;
           s.usb_len = len;
-          if (s.scsi_len) {
+          while (s.usb_len && s.scsi_len) {
             copy_data();
           }
           if (s.residue && s.usb_len) {

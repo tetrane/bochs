@@ -1,5 +1,5 @@
 /////////////////////////////////////////////////////////////////////////
-// $Id: enh_dbg.cc 13280 2017-08-22 18:47:18Z sshwarts $
+// $Id: enh_dbg.cc 14050 2021-01-02 12:04:52Z sshwarts $
 /////////////////////////////////////////////////////////////////////////
 //
 //  BOCHS ENHANCED DEBUGGER Ver 1.2
@@ -8,7 +8,7 @@
 //
 //  Modified by Bruce Ewing
 //
-//  Copyright (C) 2008-2017  The Bochs Project
+//  Copyright (C) 2008-2020  The Bochs Project
 
 #include "config.h"
 
@@ -18,7 +18,8 @@
 
 #include "bochs.h"
 #include "cpu/cpu.h"
-#include "disasm/disasm.h"
+
+extern char* disasm(const Bit8u *opcode, bool is_32, bool is_64, char *disbufptr, bxInstruction_c *i, bx_address cs_base, bx_address rip);
 
 #include "enh_dbg.h"
 
@@ -29,11 +30,6 @@
 
 #define NEGATE_CLASS
 #define OPTIMIZE_JUST_STAR
-
-// get a "class" to access the disassebler
-// Note; any instance has access to all the member functions -- that is enough!
-// -- i.e. No further initialization necessary.
-static disassembler bx_disassemble;
 
 const char* DC0txt[2] = {"P.Address","L.Address"};    // DumpMode definitions in text
 
@@ -222,8 +218,8 @@ static const char *BrkName[5] = {
    "Read Watchpoint",
 };
 
-bx_address BrkLAddr[BX_DBG_MAX_LIN_BPOINTS];
-unsigned BrkIdx[BX_DBG_MAX_LIN_BPOINTS];
+bx_address BrkLAddr[BX_DBG_MAX_LIN_BPOINTS+1];
+unsigned BrkIdx[BX_DBG_MAX_LIN_BPOINTS+1];
 int BreakCount = 0;
 
 // Breakpoint Dump Window stuff
@@ -959,8 +955,9 @@ void FillAsm(Bit64u LAddr, int MaxLines)
         while (AsmLineCount < MaxLines && BufEmpty == FALSE)
         {
             // disassemble 1 line with a direct call, into asmtxt
-            len = bx_disassemble.disasm(In32Mode, In64Mode, (bx_address) 0,
-                (bx_address) LAddr, (Bit8u *) p, cols[2]);
+            len = bx_dbg_disasm_wrapper(In32Mode, In64Mode, (bx_address) 0,
+                  (bx_address) LAddr, (Bit8u *) p, cols[2]);
+
             if (len <= BufLen)      // disassembly was successful?
             {
                 AsmLA[AsmLineCount] = LAddr;        // save, and
@@ -1081,7 +1078,7 @@ void LoadRegList()
             ++itemnum;
         }
     }
-    // display System regsiters (if requested)
+    // display System registers (if requested)
     // displaying these once may be necessary for column resizing
     if (SeeReg[2] || (ResizeColmns != FALSE && NeedSysRresize != FALSE))
     {
@@ -2786,7 +2783,7 @@ void SetMemLine(int L)
             {
                 // convert the hex to a byte, and try to store the byte in bochs physmem
                 sscanf (s,"%2X", (unsigned int*)&newval);
-                if (bx_mem.dbg_set_mem( (bx_phy_address) h, 1, &newval) == FALSE)
+                if (bx_mem.dbg_set_mem(BX_CPU(CurrentCPU), (bx_phy_address) h, 1, &newval) == FALSE)
                     err = 2;
                 else
                     *u++ = newval;      // update DataDump array so it will refresh on the screen
@@ -2898,7 +2895,7 @@ int HotKey (int ww, int Alt, int Shift, int Control)
                 TogglePTree();
             else
             {
-                bx_disassemble.toggle_syntax_mode();
+                bx_dbg_disassemble_switch_mode();
                 if (AtBreak != FALSE)
                 {
                     // do the standard ASM window fill sequence
@@ -3230,7 +3227,7 @@ void ActivateMenuItem (int cmd)
             break;
 
         case CMD_ATTI:      // Toggle ASM Syntax
-            bx_disassemble.toggle_syntax_mode();
+            bx_dbg_disassemble_switch_mode();
             if (AtBreak != FALSE)
             {
                 // do the standard ASM window fill sequence

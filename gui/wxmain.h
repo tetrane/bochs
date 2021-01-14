@@ -1,8 +1,8 @@
 /////////////////////////////////////////////////////////////////
-// $Id: wxmain.h 13250 2017-06-03 14:32:56Z vruppert $
+// $Id: wxmain.h 13905 2020-07-10 08:13:17Z vruppert $
 /////////////////////////////////////////////////////////////////
 //
-//  Copyright (C) 2002-2017  The Bochs Project
+//  Copyright (C) 2002-2020  The Bochs Project
 //
 //  This library is free software; you can redistribute it and/or
 //  modify it under the terms of the GNU Lesser General Public
@@ -207,6 +207,7 @@ public:
   void OnToolbarClick(wxCommandEvent& event);
   int HandleAskParam(BxEvent *event);
   int HandleAskParamString(bx_param_string_c *param);
+  void StatusbarUpdate(BxEvent *event);
 
   // called from the sim thread's OnExit() method.
   void OnSimThreadExit();

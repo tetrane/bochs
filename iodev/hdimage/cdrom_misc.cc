@@ -1,8 +1,8 @@
 /////////////////////////////////////////////////////////////////////////
-// $Id: cdrom_misc.cc 12870 2015-10-25 17:02:12Z vruppert $
+// $Id: cdrom_misc.cc 14039 2020-12-27 17:26:33Z vruppert $
 /////////////////////////////////////////////////////////////////////////
 //
-//  Copyright (C) 2002-2015  The Bochs Project
+//  Copyright (C) 2002-2020  The Bochs Project
 //
 //  This library is free software; you can redistribute it and/or
 //  modify it under the terms of the GNU Lesser General Public
@@ -24,11 +24,6 @@
 // needed by the CDROM emulation in 'harddrv.cc'.  Mostly, just
 // ioctl() calls and such.  Should be fairly easy to add support
 // for your OS if it is not supported yet.
-
-// Define BX_PLUGGABLE in files that can be compiled into plugins.  For
-// platforms that require a special tag on exported symbols, BX_PLUGGABLE
-// is used to know when we are exporting symbols and when we are importing.
-#define BX_PLUGGABLE
 
 #include "bochs.h"
 #if BX_SUPPORT_CDROM

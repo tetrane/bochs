@@ -1,5 +1,5 @@
 /////////////////////////////////////////////////////////////////////////
-// $Id: core_duo_t2400_yonah.cc 13153 2017-03-26 20:12:14Z sshwarts $
+// $Id: core_duo_t2400_yonah.cc 14062 2021-01-02 16:28:51Z sshwarts $
 /////////////////////////////////////////////////////////////////////////
 //
 //   Copyright (c) 2011-2017 Stanislav Shwartsman
@@ -133,18 +133,11 @@ void core_duo_t2400_yonah_t::get_cpuid_leaf(Bit32u function, Bit32u subfunction,
 // leaf 0x00000000 //
 void core_duo_t2400_yonah_t::get_std_cpuid_leaf_0(cpuid_function_t *leaf) const
 {
-  static const char* vendor_string = "GenuineIntel";
-
   // EAX: highest std function understood by CPUID
   // EBX: vendor ID string
   // EDX: vendor ID string
   // ECX: vendor ID string
-  unsigned max_leaf = 0xA;
-  static bx_bool cpuid_limit_winnt = SIM->get_param_bool(BXPN_CPUID_LIMIT_WINNT)->get();
-  if (cpuid_limit_winnt)
-    max_leaf = 0x2;
-
-  get_leaf_0(max_leaf, vendor_string, leaf);
+  get_leaf_0(0xA, "GenuineIntel", leaf);
 }
 
 // leaf 0x00000001 //
@@ -276,7 +269,9 @@ void core_duo_t2400_yonah_t::get_std_cpuid_leaf_1(cpuid_function_t *leaf) const
               BX_CPUID_STD_SSE |
               BX_CPUID_STD_SSE2 |
               BX_CPUID_STD_SELF_SNOOP |
+#if BX_SUPPORT_SMP
               BX_CPUID_STD_HT |
+#endif
               BX_CPUID_STD_PBE;
 #if BX_SUPPORT_APIC
   // if MSR_APICBASE APIC Global Enable bit has been cleared,

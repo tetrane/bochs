@@ -1,8 +1,8 @@
 /////////////////////////////////////////////////////////////////////////
-// $Id: floppy.cc 13160 2017-03-30 18:08:15Z vruppert $
+// $Id: floppy.cc 14067 2021-01-05 21:57:13Z vruppert $
 /////////////////////////////////////////////////////////////////////////
 //
-//  Copyright (C) 2002-2017  The Bochs Project
+//  Copyright (C) 2002-2021  The Bochs Project
 //
 //  This library is free software; you can redistribute it and/or
 //  modify it under the terms of the GNU Lesser General Public
@@ -58,7 +58,7 @@ extern "C" {
 bx_floppy_ctrl_c *theFloppyController;
 
 /* for main status register */
-#define FD_MS_MRQ  0x80
+#define FD_MS_RQM  0x80
 #define FD_MS_DIO  0x40
 #define FD_MS_NDMA 0x20
 #define FD_MS_BUSY 0x10
@@ -108,7 +108,6 @@ int CDECL libfloppy_LTX_plugin_init(plugin_t *plugin, plugintype_t type)
 {
   if (type == PLUGTYPE_CORE) {
     theFloppyController = new bx_floppy_ctrl_c();
-    bx_devices.pluginFloppyDevice = theFloppyController;
     BX_REGISTER_DEVICE_DEVMODEL(plugin, type, theFloppyController, BX_PLUGIN_FLOPPY);
     return 0; // Success
   } else {
@@ -154,14 +153,13 @@ void bx_floppy_ctrl_c::init(void)
   char pname[10];
   bx_list_c *floppy;
 
-  BX_DEBUG(("Init $Id: floppy.cc 13160 2017-03-30 18:08:15Z vruppert $"));
+  BX_DEBUG(("Init $Id: floppy.cc 14067 2021-01-05 21:57:13Z vruppert $"));
   DEV_dma_register_8bit_channel(2, dma_read, dma_write, "Floppy Drive");
   DEV_register_irq(6, "Floppy Drive");
   for (unsigned addr=0x03F2; addr<=0x03F7; addr++) {
     DEV_register_ioread_handler(this, read_handler, addr, "Floppy Drive", 1);
     DEV_register_iowrite_handler(this, write_handler, addr, "Floppy Drive", 1);
   }
-
 
   cmos_value = 0x00; /* start out with: no drive 0, no drive 1 */
 
@@ -384,6 +382,7 @@ void bx_floppy_ctrl_c::register_state(void)
   new bx_shadow_data_c(list, "result", BX_FD_THIS s.result, 10, 1);
   new bx_shadow_num_c(list, "result_index", &BX_FD_THIS s.result_index);
   new bx_shadow_num_c(list, "result_size", &BX_FD_THIS s.result_size);
+  new bx_shadow_num_c(list, "last_result", &BX_FD_THIS s.last_result);
   new bx_shadow_num_c(list, "DOR", &BX_FD_THIS s.DOR, BASE_HEX);
   new bx_shadow_num_c(list, "TDR", &BX_FD_THIS s.TDR, BASE_HEX);
   new bx_shadow_bool_c(list, "TC", &BX_FD_THIS s.TC);
@@ -492,9 +491,12 @@ Bit32u bx_floppy_ctrl_c::read(Bit32u address, unsigned io_len)
       } else if (BX_FD_THIS s.result_size == 0) {
         BX_ERROR(("port 0x3f5: no results to read"));
         BX_FD_THIS s.main_status_reg &= FD_MS_NDMA;
-        value = BX_FD_THIS s.result[0];
+        value = BX_FD_THIS s.last_result;
+        BX_FD_THIS s.status_reg0 = 0x80;
+        enter_result_phase();
       } else {
         value = BX_FD_THIS s.result[BX_FD_THIS s.result_index++];
+        BX_FD_THIS s.last_result = value;
         BX_FD_THIS s.main_status_reg &= 0xF0;
         BX_FD_THIS lower_interrupt();
         if (BX_FD_THIS s.result_index >= BX_FD_THIS s.result_size) {
@@ -577,8 +579,8 @@ void bx_floppy_ctrl_c::write(Bit32u address, Bit32u value, unsigned io_len)
 #else
   UNUSED(this_ptr);
 #endif  // !BX_USE_FD_SMF
-  Bit8u dma_and_interrupt_enable;
-  Bit8u normal_operation, prev_normal_operation;
+  bx_bool dma_and_interrupt_enable;
+  bx_bool normal_operation, prev_normal_operation;
   Bit8u drive_select;
   Bit8u motor_on_drive0, motor_on_drive1;
 
@@ -587,6 +589,10 @@ void bx_floppy_ctrl_c::write(Bit32u address, Bit32u value, unsigned io_len)
   switch (address) {
 #if BX_DMA_FLOPPY_IO
     case 0x3F2: /* diskette controller digital output register */
+      drive_select = value & 0x03;
+      prev_normal_operation = (BX_FD_THIS s.DOR & 0x04) != 0;
+      normal_operation = (value & 0x04) != 0;
+      dma_and_interrupt_enable = (value & 0x08) != 0;
       motor_on_drive0 = value & 0x10;
       motor_on_drive1 = value & 0x20;
       /* set status bar conditions for Floppy 0 and Floppy 1 */
@@ -598,23 +604,19 @@ void bx_floppy_ctrl_c::write(Bit32u address, Bit32u value, unsigned io_len)
         if (motor_on_drive1 != (BX_FD_THIS s.DOR & 0x20))
           bx_gui->statusbar_setitem(BX_FD_THIS s.statusbar_id[1], motor_on_drive1);
       }
-      dma_and_interrupt_enable = value & 0x08;
-      if (!dma_and_interrupt_enable)
+      if (!dma_and_interrupt_enable && ((BX_FD_THIS s.DOR & 0x08) != 0)) {
         BX_DEBUG(("DMA and interrupt capabilities disabled"));
-      normal_operation = value & 0x04;
-      drive_select = value & 0x03;
-
-      prev_normal_operation = BX_FD_THIS s.DOR & 0x04;
-      BX_FD_THIS s.DOR = value;
-
-      if (prev_normal_operation==0 && normal_operation) {
+      }
+      if (!prev_normal_operation && normal_operation) {
         // transition from RESET to NORMAL
         bx_pc_system.activate_timer(BX_FD_THIS s.floppy_timer_index, 250, 0);
-      } else if (prev_normal_operation && normal_operation==0) {
+      } else if (prev_normal_operation && !normal_operation) {
         // transition from NORMAL to RESET
         BX_FD_THIS s.main_status_reg &= FD_MS_NDMA;
         BX_FD_THIS s.pending_command = 0xfe; // RESET pending
       }
+      BX_FD_THIS s.DOR = value;
+
       BX_DEBUG(("io_write: digital output register"));
       BX_DEBUG(("  motor on, drive0 = %d", motor_on_drive0 > 0));
       BX_DEBUG(("  motor on, drive1 = %d", motor_on_drive1 > 0));
@@ -656,7 +658,7 @@ void bx_floppy_ctrl_c::write(Bit32u address, Bit32u value, unsigned io_len)
         BX_FD_THIS s.command_index = 1;
         /* read/write command in progress */
         BX_FD_THIS s.main_status_reg &= ~FD_MS_DIO; // leave drive status untouched
-        BX_FD_THIS s.main_status_reg |= FD_MS_MRQ | FD_MS_BUSY;
+        BX_FD_THIS s.main_status_reg |= FD_MS_RQM | FD_MS_BUSY;
         switch (value) {
           case 0x03: /* specify */
             BX_FD_THIS s.command_size = 3;
@@ -1075,7 +1077,7 @@ void bx_floppy_ctrl_c::floppy_command(void)
         BX_FD_THIS s.main_status_reg &= FD_MS_NDMA;
         BX_FD_THIS s.main_status_reg |= FD_MS_BUSY;
         if (BX_FD_THIS s.main_status_reg & FD_MS_NDMA) {
-          BX_FD_THIS s.main_status_reg |= (FD_MS_MRQ | FD_MS_DIO);
+          BX_FD_THIS s.main_status_reg |= (FD_MS_RQM | FD_MS_DIO);
         }
         // time to read one sector at 300 rpm
         sector_time = 200000 / BX_FD_THIS s.media[drive].sectors_per_track;
@@ -1086,7 +1088,7 @@ void bx_floppy_ctrl_c::floppy_command(void)
         BX_FD_THIS s.main_status_reg &= FD_MS_NDMA;
         BX_FD_THIS s.main_status_reg |= FD_MS_BUSY;
         if (BX_FD_THIS s.main_status_reg & FD_MS_NDMA) {
-          BX_FD_THIS s.main_status_reg |= FD_MS_MRQ;
+          BX_FD_THIS s.main_status_reg |= FD_MS_RQM;
         } else {
           DEV_dma_set_drq(FLOPPY_DMA_CHAN, 1);
         }
@@ -1239,7 +1241,7 @@ void bx_floppy_ctrl_c::timer()
       // transfer next sector
       if (BX_FD_THIS s.main_status_reg & FD_MS_NDMA) {
         BX_FD_THIS s.main_status_reg &= ~FD_MS_BUSY;  // clear busy bit
-        BX_FD_THIS s.main_status_reg |= FD_MS_MRQ | FD_MS_DIO;  // data byte waiting
+        BX_FD_THIS s.main_status_reg |= FD_MS_RQM | FD_MS_DIO;  // data byte waiting
       } else {
         DEV_dma_set_drq(FLOPPY_DMA_CHAN, 1);
       }
@@ -1490,7 +1492,7 @@ void bx_floppy_ctrl_c::increment_sector(void)
   }
 }
 
-unsigned bx_floppy_ctrl_c::set_media_status(unsigned drive, bx_bool status)
+bx_bool bx_floppy_ctrl_c::set_media_status(unsigned drive, bx_bool status)
 {
   char *path;
   unsigned type;
@@ -1596,7 +1598,7 @@ bx_bool bx_floppy_ctrl_c::evaluate_media(Bit8u devtype, Bit8u type, char *path, 
 
   // use virtual VFAT support if requested
   if (!strncmp(path, "vvfat:", 6) && (devtype == FDRIVE_350HD)) {
-    media->vvfat = DEV_hdimage_init_image(BX_HDIMAGE_MODE_VVFAT, 1474560, "");
+    media->vvfat = DEV_hdimage_init_image("vvfat", 1474560, "");
     if (media->vvfat != NULL) {
       if (media->vvfat->open(path + 6) == 0) {
         media->type              = BX_FLOPPY_1_44;
@@ -1818,7 +1820,7 @@ void bx_floppy_ctrl_c::enter_result_phase(void)
   /* these are always the same */
   BX_FD_THIS s.result_index = 0;
   // not necessary to clear any status bits, we're about to set them all
-  BX_FD_THIS s.main_status_reg |= FD_MS_MRQ | FD_MS_DIO | FD_MS_BUSY;
+  BX_FD_THIS s.main_status_reg |= FD_MS_RQM | FD_MS_DIO | FD_MS_BUSY;
 
   // invalid command?
   if ((BX_FD_THIS s.status_reg0 & 0xc0) == 0x80) {
@@ -1894,7 +1896,7 @@ void bx_floppy_ctrl_c::enter_result_phase(void)
 void bx_floppy_ctrl_c::enter_idle_phase(void)
 {
   BX_FD_THIS s.main_status_reg &= (FD_MS_NDMA | 0x0f);  // leave drive status untouched
-  BX_FD_THIS s.main_status_reg |= FD_MS_MRQ; // data register ready
+  BX_FD_THIS s.main_status_reg |= FD_MS_RQM; // data register ready
 
   BX_FD_THIS s.command_complete = 1; /* waiting for new command */
   BX_FD_THIS s.command_index = 0;

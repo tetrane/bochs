@@ -1,8 +1,8 @@
 /////////////////////////////////////////////////////////////////////////
-// $Id: cdrom_osx.cc 12470 2014-08-23 14:46:31Z vruppert $
+// $Id: cdrom_osx.cc 14039 2020-12-27 17:26:33Z vruppert $
 /////////////////////////////////////////////////////////////////////////
 //
-//  Copyright (C) 2002-2013  The Bochs Project
+//  Copyright (C) 2002-2020  The Bochs Project
 //
 //  This library is free software; you can redistribute it and/or
 //  modify it under the terms of the GNU Lesser General Public
@@ -24,11 +24,6 @@
 // needed by the CDROM emulation in 'harddrv.cc'.  Mostly, just
 // ioctl() calls and such.  Should be fairly easy to add support
 // for your OS if it is not supported yet.
-
-// Define BX_PLUGGABLE in files that can be compiled into plugins.  For
-// platforms that require a special tag on exported symbols, BX_PLUGGABLE
-// is used to know when we are exporting symbols and when we are importing.
-#define BX_PLUGGABLE
 
 #include "bochs.h"
 #if BX_SUPPORT_CDROM
@@ -189,13 +184,13 @@ static struct _CDTOC * ReadTOC(const char *devpath)
   CFDictionaryRef properties = 0;
   CFDataRef data = 0;
   mach_port_t port = 0;
-  char *devname;
+  const char *devname;
 
   if ((devname = strrchr(devpath, '/')) != NULL) {
     ++devname;
   }
   else {
-    devname = (char *) devpath;
+    devname = (const char *) devpath;
   }
 
   if (IOMasterPort(bootstrap_port, &port) != KERN_SUCCESS) {

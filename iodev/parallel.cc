@@ -1,8 +1,8 @@
 /////////////////////////////////////////////////////////////////////////
-// $Id: parallel.cc 13051 2017-01-28 09:52:09Z vruppert $
+// $Id: parallel.cc 13999 2020-11-08 09:58:15Z vruppert $
 /////////////////////////////////////////////////////////////////////////
 //
-//  Copyright (C) 2001-2017  The Bochs Project
+//  Copyright (C) 2001-2020  The Bochs Project
 //
 //  This library is free software; you can redistribute it and/or
 //  modify it under the terms of the GNU Lesser General Public
@@ -118,6 +118,7 @@ void CDECL libparallel_LTX_plugin_fini(void)
 {
   char port[10];
 
+  delete theParallelDevice;
   bx_list_c *menu = (bx_list_c*)SIM->get_param("ports.parallel");
   for (int i=0; i<BX_N_PARALLEL_PORTS; i++) {
     sprintf(port, "parport%d", i+1);
@@ -125,7 +126,6 @@ void CDECL libparallel_LTX_plugin_fini(void)
     sprintf(port, "%d", i+1);
     menu->remove(port);
   }
-  delete theParallelDevice;
 }
 
 // the device object
@@ -158,7 +158,7 @@ void bx_parallel_c::init(void)
   bx_list_c *base, *misc_rt = NULL, *menu = NULL;
   int count = 0;
 
-  BX_DEBUG(("Init $Id: parallel.cc 13051 2017-01-28 09:52:09Z vruppert $"));
+  BX_DEBUG(("Init $Id: parallel.cc 13999 2020-11-08 09:58:15Z vruppert $"));
 
   for (unsigned i=0; i<BX_N_PARALLEL_PORTS; i++) {
     sprintf(pname, "ports.parallel.%d", i+1);

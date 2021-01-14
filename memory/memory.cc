@@ -1,8 +1,8 @@
 /////////////////////////////////////////////////////////////////////////
-// $Id: memory.cc 12569 2014-12-18 17:52:40Z vruppert $
+// $Id: memory.cc 14011 2020-11-29 08:47:13Z vruppert $
 /////////////////////////////////////////////////////////////////////////
 //
-//  Copyright (C) 2001-2014  The Bochs Project
+//  Copyright (C) 2001-2020  The Bochs Project
 //
 //  This library is free software; you can redistribute it and/or
 //  modify it under the terms of the GNU Lesser General Public
@@ -51,7 +51,7 @@ void BX_MEM_C::writePhysicalPage(BX_CPU_C *cpu, bx_phy_address addr, unsigned le
   BX_MEM_THIS check_monitor(a20addr, len);
 #endif
 
-  bx_bool is_bios = (a20addr >= (bx_phy_address)~BIOS_MASK);
+  bx_bool is_bios = (a20addr >= (bx_phy_address)BX_MEM_THIS bios_rom_addr);
 #if BX_PHY_ADDRESS_LONG
   if (a20addr > BX_CONST64(0xffffffff)) is_bios = 0;
 #endif
@@ -71,11 +71,13 @@ void BX_MEM_C::writePhysicalPage(BX_CPU_C *cpu, bx_phy_address addr, unsigned le
 
   memory_handler = BX_MEM_THIS memory_handlers[a20addr >> 20];
   while (memory_handler) {
-    if (memory_handler->begin <= a20addr &&
+    if (memory_handler->write_handler != NULL) {
+      if (memory_handler->begin <= a20addr &&
           memory_handler->end >= a20addr &&
           memory_handler->write_handler(a20addr, len, data, memory_handler->param))
-    {
-      return;
+      {
+        return;
+      }
     }
     memory_handler = memory_handler->next;
   }
@@ -83,23 +85,23 @@ void BX_MEM_C::writePhysicalPage(BX_CPU_C *cpu, bx_phy_address addr, unsigned le
 mem_write:
 
   // all memory access fits in single 4K page
-  if (a20addr < BX_MEM_THIS len && ! is_bios) {
+  if ((a20addr < BX_MEM_THIS len) && !is_bios) {
     // all of data is within limits of physical memory
     if (a20addr < 0x000a0000 || a20addr >= 0x00100000)
     {
       if (len == 8) {
         pageWriteStampTable.decWriteStamp(a20addr, 8);
-        WriteHostQWordToLittleEndian(BX_MEM_THIS get_vector(a20addr), *(Bit64u*)data);
+        WriteHostQWordToLittleEndian((Bit64u*) BX_MEM_THIS get_vector(a20addr), *(Bit64u*)data);
         return;
       }
       if (len == 4) {
         pageWriteStampTable.decWriteStamp(a20addr, 4);
-        WriteHostDWordToLittleEndian(BX_MEM_THIS get_vector(a20addr), *(Bit32u*)data);
+        WriteHostDWordToLittleEndian((Bit32u*) BX_MEM_THIS get_vector(a20addr), *(Bit32u*)data);
         return;
       }
       if (len == 2) {
         pageWriteStampTable.decWriteStamp(a20addr, 2);
-        WriteHostWordToLittleEndian(BX_MEM_THIS get_vector(a20addr), *(Bit16u*)data);
+        WriteHostWordToLittleEndian((Bit16u*) BX_MEM_THIS get_vector(a20addr), *(Bit16u*)data);
         return;
       }
       if (len == 1) {
@@ -109,8 +111,6 @@ mem_write:
       }
       // len == other, just fall thru to special cases handling
     }
-
-    pageWriteStampTable.decWriteStamp(a20addr);
 
 #ifdef BX_LITTLE_ENDIAN
     data_ptr = (Bit8u *) data;
@@ -122,17 +122,35 @@ mem_write:
     {
       // addr *not* in range 000A0000 .. 000FFFFF
       while(1) {
-        *(BX_MEM_THIS get_vector(a20addr)) = *data_ptr;
-        if (len == 1) return;
-        len--;
-        a20addr++;
-#ifdef BX_LITTLE_ENDIAN
-        data_ptr++;
-#else // BX_BIG_ENDIAN
-        data_ptr--;
-#endif
+        // Write in chunks of 8 bytes if we can
+        if ((len & 7) == 0) {
+          pageWriteStampTable.decWriteStamp(a20addr, 8);
+          WriteHostQWordToLittleEndian((Bit64u*) BX_MEM_THIS get_vector(a20addr), *(Bit64u*)data_ptr);
+          len -= 8;
+          a20addr += 8;
+          #ifdef BX_LITTLE_ENDIAN
+            data_ptr += 8;
+          #else
+            data_ptr -= 8;
+          #endif
+
+          if (len == 0) return;
+        } else {
+          pageWriteStampTable.decWriteStamp(a20addr, 1);
+          *(BX_MEM_THIS get_vector(a20addr)) = *data_ptr;
+          if (len == 1) return;
+          len--;
+          a20addr++;
+  #ifdef BX_LITTLE_ENDIAN
+          data_ptr++;
+  #else // BX_BIG_ENDIAN
+          data_ptr--;
+  #endif
+        }
       }
     }
+
+    pageWriteStampTable.decWriteStamp(a20addr);
 
     // addr must be in range 000A0000 .. 000FFFFF
 
@@ -160,6 +178,26 @@ mem_write:
           // Writes to ShadowRAM
           BX_DEBUG(("Writing to ShadowRAM: address 0x" FMT_PHY_ADDRX ", data %02x", a20addr, *data_ptr));
           *(BX_MEM_THIS get_vector(a20addr)) = *data_ptr;
+        } else if ((area >= BX_MEM_AREA_E0000) && BX_MEM_THIS bios_write_enabled) {
+          // volatile BIOS write support
+#ifdef BX_LITTLE_ENDIAN
+          data_ptr = (Bit8u *) data;
+#else // BX_BIG_ENDIAN
+          data_ptr = (Bit8u *) data + (len - 1);
+#endif
+          for (unsigned i = 0; i < len; i++) {
+            if (BX_MEM_THIS flash_type > 0) {
+              BX_MEM_THIS flash_write(BIOS_MAP_LAST128K(a20addr), *data_ptr);
+            } else {
+              BX_MEM_THIS rom[BIOS_MAP_LAST128K(a20addr)] = *data_ptr;
+            }
+            a20addr++;
+#ifdef BX_LITTLE_ENDIAN
+            data_ptr++;
+#else // BX_BIG_ENDIAN
+            data_ptr--;
+#endif
+          }
         } else {
           // Writes to ROM, Inhibit
           BX_DEBUG(("Write to ROM ignored: address 0x" FMT_PHY_ADDRX ", data %02x", a20addr, *data_ptr));
@@ -176,7 +214,7 @@ inc_one:
 #endif
 
     }
-  } else if (BX_MEM_THIS bios_write_enabled && (a20addr >= (bx_phy_address)~BIOS_MASK)) {
+  } else if (BX_MEM_THIS bios_write_enabled && is_bios) {
     // volatile BIOS write support
 #ifdef BX_LITTLE_ENDIAN
     data_ptr = (Bit8u *) data;
@@ -184,7 +222,11 @@ inc_one:
     data_ptr = (Bit8u *) data + (len - 1);
 #endif
     for (unsigned i = 0; i < len; i++) {
-      BX_MEM_THIS rom[a20addr & BIOS_MASK] = *data_ptr;
+      if (BX_MEM_THIS flash_type > 0) {
+        BX_MEM_THIS flash_write(a20addr & BIOS_MASK, *data_ptr);
+      } else {
+        BX_MEM_THIS rom[a20addr & BIOS_MASK] = *data_ptr;
+      }
       a20addr++;
 #ifdef BX_LITTLE_ENDIAN
       data_ptr++;
@@ -209,7 +251,7 @@ void BX_MEM_C::readPhysicalPage(BX_CPU_C *cpu, bx_phy_address addr, unsigned len
     BX_PANIC(("readPhysicalPage: cross page access at address 0x" FMT_PHY_ADDRX ", len=%d", addr, len));
   }
 
-  bx_bool is_bios = (a20addr >= (bx_phy_address)~BIOS_MASK);
+  bx_bool is_bios = (a20addr >= (bx_phy_address)BX_MEM_THIS bios_rom_addr);
 #if BX_PHY_ADDRESS_LONG
   if (a20addr > BX_CONST64(0xffffffff)) is_bios = 0;
 #endif
@@ -240,20 +282,20 @@ void BX_MEM_C::readPhysicalPage(BX_CPU_C *cpu, bx_phy_address addr, unsigned len
 
 mem_read:
 
-  if (a20addr < BX_MEM_THIS len && ! is_bios) {
+  if ((a20addr < BX_MEM_THIS len) && !is_bios) {
     // all of data is within limits of physical memory
     if (a20addr < 0x000a0000 || a20addr >= 0x00100000)
     {
       if (len == 8) {
-        ReadHostQWordFromLittleEndian(BX_MEM_THIS get_vector(a20addr), * (Bit64u*) data);
+        * (Bit64u*) data = ReadHostQWordFromLittleEndian((Bit64u*) BX_MEM_THIS get_vector(a20addr));
         return;
       }
       if (len == 4) {
-        ReadHostDWordFromLittleEndian(BX_MEM_THIS get_vector(a20addr), * (Bit32u*) data);
+        * (Bit32u*) data = ReadHostDWordFromLittleEndian((Bit32u*) BX_MEM_THIS get_vector(a20addr));
         return;
       }
       if (len == 2) {
-        ReadHostWordFromLittleEndian(BX_MEM_THIS get_vector(a20addr), * (Bit16u*) data);
+        * (Bit16u*) data = ReadHostWordFromLittleEndian((Bit16u*) BX_MEM_THIS get_vector(a20addr));
         return;
       }
       if (len == 1) {
@@ -273,15 +315,29 @@ mem_read:
     {
       // addr *not* in range 000A0000 .. 000FFFFF
       while(1) {
-        *data_ptr = *(BX_MEM_THIS get_vector(a20addr));
-        if (len == 1) return;
-        len--;
-        a20addr++;
-#ifdef BX_LITTLE_ENDIAN
-        data_ptr++;
-#else // BX_BIG_ENDIAN
-        data_ptr--;
-#endif
+        // Read in chunks of 8 bytes if we can
+        if ((len & 7) == 0) {
+          *((Bit64u*)data_ptr) = ReadHostQWordFromLittleEndian((Bit64u*) BX_MEM_THIS get_vector(a20addr));
+          len -= 8;
+          a20addr += 8;
+          #ifdef BX_LITTLE_ENDIAN
+            data_ptr += 8;
+          #else
+            data_ptr -= 8;
+          #endif
+
+          if (len == 0) return;
+        } else {
+          *data_ptr = *(BX_MEM_THIS get_vector(a20addr));
+          if (len == 1) return;
+          len--;
+          a20addr++;
+  #ifdef BX_LITTLE_ENDIAN
+          data_ptr++;
+  #else // BX_BIG_ENDIAN
+          data_ptr--;
+  #endif
+        }
       }
     }
 
@@ -304,7 +360,11 @@ mem_read:
           // Read from ROM
           if ((a20addr & 0xfffe0000) == 0x000e0000) {
             // last 128K of BIOS ROM mapped to 0xE0000-0xFFFFF
-            *data_ptr = BX_MEM_THIS rom[BIOS_MAP_LAST128K(a20addr)];
+            if (BX_MEM_THIS flash_type > 0) {
+              *data_ptr = BX_MEM_THIS flash_read(BIOS_MAP_LAST128K(a20addr));
+            } else {
+              *data_ptr = BX_MEM_THIS rom[BIOS_MAP_LAST128K(a20addr)];
+            }
           } else {
             *data_ptr = BX_MEM_THIS rom[(a20addr & EXROM_MASK) + BIOSROMSZ];
           }
@@ -353,18 +413,22 @@ inc_one:
     data_ptr = (Bit8u *) data + (len - 1);
 #endif
 
-    if (a20addr >= (bx_phy_address)~BIOS_MASK) {
+    if (is_bios) {
       for (unsigned i = 0; i < len; i++) {
-        *data_ptr = BX_MEM_THIS rom[a20addr & BIOS_MASK];
-         a20addr++;
+        if (BX_MEM_THIS flash_type > 0) {
+          *data_ptr = BX_MEM_THIS flash_read(a20addr & BIOS_MASK);
+        } else {
+          *data_ptr = BX_MEM_THIS rom[a20addr & BIOS_MASK];
+        }
+        a20addr++;
 #ifdef BX_LITTLE_ENDIAN
-         data_ptr++;
+        data_ptr++;
 #else // BX_BIG_ENDIAN
-         data_ptr--;
+        data_ptr--;
 #endif
       }
-    }
-    else {
+    } else {
+      // bogus memory
       memset(data, 0xFF, len);
     }
   }

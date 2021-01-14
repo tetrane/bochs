@@ -1,8 +1,8 @@
 /////////////////////////////////////////////////////////////////////////
-// $Id: corei7_skylake-x.cc 13273 2017-08-09 21:04:15Z sshwarts $
+// $Id: corei7_skylake-x.cc 14062 2021-01-02 16:28:51Z sshwarts $
 /////////////////////////////////////////////////////////////////////////
 //
-//   Copyright (c) 2017 Stanislav Shwartsman
+//   Copyright (c) 2017-2018 Stanislav Shwartsman
 //          Written by Stanislav Shwartsman [sshwarts at sourceforge net]
 //
 //  This library is free software; you can redistribute it and/or
@@ -63,6 +63,7 @@ corei7_skylake_x_t::corei7_skylake_x_t(BX_CPU_C *cpu): bx_cpuid_t(cpu)
   enable_cpu_extension(BX_ISA_NX);
   enable_cpu_extension(BX_ISA_1G_PAGES);
   enable_cpu_extension(BX_ISA_PCID);
+  enable_cpu_extension(BX_ISA_TSC_ADJUST);
   enable_cpu_extension(BX_ISA_TSC_DEADLINE);
   enable_cpu_extension(BX_ISA_SSE);
   enable_cpu_extension(BX_ISA_SSE2);
@@ -80,6 +81,8 @@ corei7_skylake_x_t::corei7_skylake_x_t(BX_CPU_C *cpu): bx_cpuid_t(cpu)
   enable_cpu_extension(BX_ISA_RDTSCP);
   enable_cpu_extension(BX_ISA_XSAVE);
   enable_cpu_extension(BX_ISA_XSAVEOPT);
+  enable_cpu_extension(BX_ISA_XSAVEC);
+  enable_cpu_extension(BX_ISA_XSAVES);
   enable_cpu_extension(BX_ISA_AES_PCLMULQDQ);
   enable_cpu_extension(BX_ISA_MOVBE);
   enable_cpu_extension(BX_ISA_AVX);
@@ -93,7 +96,6 @@ corei7_skylake_x_t::corei7_skylake_x_t(BX_CPU_C *cpu): bx_cpuid_t(cpu)
   enable_cpu_extension(BX_ISA_INVPCID);
   enable_cpu_extension(BX_ISA_SMEP);
   enable_cpu_extension(BX_ISA_RDRAND);
-  enable_cpu_extension(BX_ISA_TSC_DEADLINE);
   enable_cpu_extension(BX_ISA_FCS_FDS_DEPRECATION);
   enable_cpu_extension(BX_ISA_RDSEED);
   enable_cpu_extension(BX_ISA_ADX);
@@ -244,6 +246,7 @@ Bit32u corei7_skylake_x_t::get_vmx_extensions_bitmask(void) const
          BX_VMX_VMCS_SHADOWING |
          BX_VMX_EPT_EXCEPTION |
          BX_VMX_SW_INTERRUPT_INJECTION_ILEN_0 |
+         BX_VMX_PML |
       /* BX_VMX_POSTED_INSTERRUPTS - not implemented yet */
       /* BX_VMX_MBE_CONTROL - not implemeted yet */
          BX_VMX_TSC_SCALING;
@@ -254,18 +257,11 @@ Bit32u corei7_skylake_x_t::get_vmx_extensions_bitmask(void) const
 // leaf 0x00000000 //
 void corei7_skylake_x_t::get_std_cpuid_leaf_0(cpuid_function_t *leaf) const
 {
-  static const char* vendor_string = "GenuineIntel";
-
   // EAX: highest std function understood by CPUID
   // EBX: vendor ID string
   // EDX: vendor ID string
   // ECX: vendor ID string
-  unsigned max_leaf = 0x16;
-  static bx_bool cpuid_limit_winnt = SIM->get_param_bool(BXPN_CPUID_LIMIT_WINNT)->get();
-  if (cpuid_limit_winnt)
-    max_leaf = 0x2;
-
-  get_leaf_0(max_leaf, vendor_string, leaf);
+  get_leaf_0(0x16, "GenuineIntel", leaf);
 }
 
 // leaf 0x00000001 //
@@ -415,7 +411,9 @@ void corei7_skylake_x_t::get_std_cpuid_leaf_1(cpuid_function_t *leaf) const
               BX_CPUID_STD_SSE |
               BX_CPUID_STD_SSE2 |
               BX_CPUID_STD_SELF_SNOOP |
+#if BX_SUPPORT_SMP
               BX_CPUID_STD_HT |
+#endif
               BX_CPUID_STD_THERMAL_MONITOR |
               BX_CPUID_STD_PBE;
 #if BX_SUPPORT_APIC
@@ -581,7 +579,7 @@ void corei7_skylake_x_t::get_std_cpuid_leaf_7(Bit32u subfunction, cpuid_function
     // * [30:30] AVX512BW instructions support
     // * [31:31] AVX512VL variable vector length support
     leaf->ebx = BX_CPUID_EXT3_FSGSBASE | 
-             /* BX_CPUID_EXT3_TSC_ADJUST | */ // not implemented yet
+                BX_CPUID_EXT3_TSC_ADJUST |
                 BX_CPUID_EXT3_BMI1 | 
                 BX_CPUID_EXT3_AVX2 |
                 BX_CPUID_EXT3_FDP_DEPRECATION |
@@ -589,11 +587,11 @@ void corei7_skylake_x_t::get_std_cpuid_leaf_7(Bit32u subfunction, cpuid_function
                 BX_CPUID_EXT3_BMI2 | 
                 BX_CPUID_EXT3_ENCHANCED_REP_STRINGS |
                 BX_CPUID_EXT3_INVPCID |
+                BX_CPUID_EXT3_DEPRECATE_FCS_FDS |
 #if BX_SUPPORT_EVEX
                 BX_CPUID_EXT3_AVX512F |
                 BX_CPUID_EXT3_AVX512DQ |
 #endif
-                BX_CPUID_EXT3_DEPRECATE_FCS_FDS |
                 BX_CPUID_EXT3_RDSEED |
                 BX_CPUID_EXT3_ADX |
                 BX_CPUID_EXT3_SMAP |

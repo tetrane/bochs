@@ -1,5 +1,5 @@
 /////////////////////////////////////////////////////////////////////////
-// $Id: cpudb.h 13273 2017-08-09 21:04:15Z sshwarts $
+// $Id: cpudb.h 13570 2019-09-24 20:26:14Z sshwarts $
 /////////////////////////////////////////////////////////////////////////
 //
 //   Copyright (c) 2011-2017 Stanislav Shwartsman
@@ -50,6 +50,8 @@ bx_define_cpudb(corei7_ivy_bridge_3770k)
 bx_define_cpudb(corei7_haswell_4770)
 bx_define_cpudb(broadwell_ult)
 bx_define_cpudb(corei7_skylake_x)
+bx_define_cpudb(corei3_cnl)
+bx_define_cpudb(corei7_icelake_u)
 #endif
 #endif
 #endif
