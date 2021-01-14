@@ -218,7 +218,8 @@ bool Replayer::reset(unsigned cpu) {
 		std::uint8_t* buffer = new std::uint8_t[chunk.size_in_memory()];
 		chunk.read(chunk.physical_address(), buffer, chunk.size_in_memory());
 
-		if (!BX_MEM(0)->dbg_set_mem(chunk.physical_address(), chunk.size_in_memory(), reinterpret_cast<const Bit8u*>(buffer))) {
+		// dbg_set_mem won't modify the content of the buffer even if taking a non-const value
+		if (!BX_MEM(0)->dbg_set_mem(BX_CPU(cpu), chunk.physical_address(), chunk.size_in_memory(), const_cast<Bit8u*>(reinterpret_cast<const Bit8u*>(buffer)))) {
 			LOG_ERROR("Can't write memory of size " << chunk.size_in_memory() << " at " << std::showbase << std::hex << chunk.physical_address())
 		}
 
@@ -234,7 +235,8 @@ bool Replayer::reset(unsigned cpu) {
 		device_memory_read(0xE0000000, sizeof(vram), reinterpret_cast<uint8_t*>(vram));
 
 		for (std::size_t i = 0; i < mmio_size / 2; ++i) {
-			if (!BX_MEM(0)->dbg_set_mem(0xB8000 + i * 2, 2, reinterpret_cast<const Bit8u*>(&vram[i * 8]))) {
+			// dbg_set_mem won't modify the content of the buffer even if taking a non-const value
+			if (!BX_MEM(0)->dbg_set_mem(BX_CPU(cpu), 0xB8000 + i * 2, 2, const_cast<Bit8u*>(reinterpret_cast<const Bit8u*>(&vram[i * 8])))) {
 				LOG_ERROR("Can't set the VRAM");
 				break;
 			}
