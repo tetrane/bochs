@@ -305,7 +305,7 @@ void Tracer::init(unsigned cpu, const replayer::Replayer& replayer) {
 	machine_ = x64_machine_description(cpu, replayer);
 
 	const char* tool_name = "bochs_replayer";
-	const char* tool_version = "1.1.0";
+	const char* tool_version = "1.2.0";
 	const char* tool_info =
 #ifdef __DATE__
 	#ifdef __TIME__

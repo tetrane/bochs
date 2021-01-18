@@ -9,7 +9,7 @@ namespace memhist_tracer {
 
 MemhistTracer::MemhistTracer(const std::string& trace_file) {
 	const char* tool_name = "bochs_replayer";
-	const char* tool_version = "1.1.0";
+	const char* tool_version = "1.2.0";
 	const char* tool_info =
 #ifdef __DATE__
 	#ifdef __TIME__
