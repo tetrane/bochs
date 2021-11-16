@@ -226,8 +226,8 @@ bochs_replayer@EXE@: @IODEV_LIB_VAR@ @DISPLAY_LIB_VAR@ @HDIMAGE_LIB_VAR@ @USB_LI
 		$(READLINE_LIB) \
 		$(EXTRA_LINK_OPTS) \
 		$(LIBS) \
-		-L$(srcdir)/tetrane/lib -lrvnbintrace -lrvnmemhistwriter -lrvnmetadata \
-		-lmagic -lrvnbinresource -lrvnjsonresource -lrvnsqlite -lsqlite3 -lboost_system -lboost_filesystem \
+		-L$(srcdir)/tetrane/lib -lrvnbintrace -lrvnmemhistwriter -lrvnmetadata-common -lrvnmetadata-bin -lrvnmetadata-sql \
+		-lrvnbinresource -lrvnjsonresource -lrvnsqlite -lsqlite3 \
 		-lrvncorevirtualbox -lboost_program_options -lrvnsyncpoint
 
 main_replayer.o: main_replayer.@CPP_SUFFIX@
